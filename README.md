@@ -20,6 +20,20 @@ sudo pacman -S evtest
 # If hkdm is not in the official repositories, install it via the AUR:
 yay -S hkdm
 ```
+### ⚠️ Crucial: Ensure the xpad Driver is Loaded
+
+Sometimes the standard Xbox controller driver (xpad) is not loaded automatically by the kernel, making the controller completely invisible to evtest.
+
+1. Force load the driver immediately:
+```bash
+sudo modprobe xpad
+```
+
+2. Ensure the driver loads automatically on boot:
+```bash
+echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf
+```
+
 ## 2. Identify the Button Name using evtest
 
 Before writing the configuration, we must find out exactly what the system calls your Xbox/Mode button.
