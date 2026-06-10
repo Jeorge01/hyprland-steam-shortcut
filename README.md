@@ -61,3 +61,54 @@ command = "/bin/bash /home/$USER/run_steam.sh"
 Because hkdm runs as root in the background, this script safely bridges the command into your active graphical environment (jeorge01) by passing the exact environment variables needed for both Wayland (wayland-1) and Xwayland (DISPLAY=:1).
 
 It also includes a safety check so that hitting the button while a game is running will not restart or interrupt Steam.
+
+1. Create or open the script in your home directory:
+```bash
+nano /home/jeorge01/run_steam.sh
+```
+2. Paste the following code:
+```bash
+#!/bin/bash
+# Redirect logs and errors to a file for easy debugging
+exec > /home/jeorge01/steam_error.log 2>&1
+
+echo "=== SCRIPT TRIGGERED BY HKDM ==="
+echo "Date/Time: $(date)"
+
+# Check if Steam is already running for your user
+if pgrep -u jeorge01 -x "steam" > /dev/null
+then
+    echo "Steam is already running! Ignoring button press to prevent interruption."
+else
+    echo "Steam is not running. Launching Big Picture Mode..."
+    # Log into your user session and forward the exact display variables
+    su - jeorge01 -c "DISPLAY=:1 WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 steam -bigpicture &"
+fi
+```
+3. Save and exit (Ctrl + O, Enter, Ctrl + X).
+
+## 5. Permissions & Activation
+
+Make the script executable and enable the background daemon to apply the changes:
+
+```bash
+# Make the script executable
+chmod +x /home/jeorge01/run_steam.sh
+
+# Enable and restart the hkdm service to load steam.toml
+sudo systemctl enable hkdm
+sudo systemctl restart hkdm
+```
+
+## Troubleshooting
+
+If Steam doesn't open when you press the button, check the generated log file to see what went wrong:
+```bash
+cat /home/jeorge01/steam_error.log
+```
+
+You can also run hkdm interactively in your terminal as root to see live button triggers:
+```bash
+sudo hkdm
+```
+(Press the Xbox button and verify it matches BTN_MODE and successfully executes the bash command).
