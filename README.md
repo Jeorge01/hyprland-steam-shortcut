@@ -68,7 +68,7 @@ key_state = "pressed"
 keys = ["BTN_MODE"]
 command = "/bin/bash /home/$USER/run_steam.sh"
 ```
-3. Save and exit (Ctrl + O, Enter, Ctrl + X).
+3. Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
 ## 4. Create the Automation Script (run_steam.sh)
 
@@ -99,7 +99,7 @@ else
     su - jeorge01 -c "DISPLAY=:1 WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 steam -bigpicture &"
 fi
 ```
-3. Save and exit (Ctrl + O, Enter, Ctrl + X).
+3. Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
 ## 5. Permissions & Activation
 
