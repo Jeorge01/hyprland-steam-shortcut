@@ -12,13 +12,9 @@ Install the following packages using your package manager (e.g., `pacman` on Arc
 
 ```bash
 # 1. xpad - Standard Xbox controller driver (usually built into the kernel, make sure it's not blacklisted)
-# 2. hkdm - HotKey Daemon for input devices (intercepts hardware buttons globally)
-# 3. evtest - Utility to monitor input events and find button names
+# 2. evtest - Utility to monitor input events and find button names
 
 sudo pacman -S evtest
-
-# If hkdm is not in the official repositories, install it via the AUR:
-yay -S hkdm
 ```
 ### ⚠️ Crucial: Ensure the xpad Driver is Loaded
 
@@ -50,79 +46,112 @@ sudo evtest
 Event: time 1717968600.123456, type 1 (EV_KEY), code 316 (BTN_MODE), value 1
 ```
 
-## 3. Configure HKDM (steam.toml)
+## 3. Create the Systemd Service
 
-HKDM listens at the hardware level. We will create a dedicated configuration file to map our Steam shortcut.
+Instead of using a desktop-level hotkey daemon (which Wayland often blocks), we create a lightweight systemd service that monitors the controller directly at the kernel layer using evtest.
 
 1. Create or open the file:
 ```bash
-sudo nano /etc/hkdm/config.d/steam.toml
+sudo nano /etc/systemd/system/xbox-steam.service
 ```
 2. Paste the following configuration:
 ```Ini, TOML
-[general]
-allow_all_devices = true
+[Unit]
+Description=Xbox Steam Big Picture Trigger
+After=multi-user.target
 
-[[events]]
-key_state = "pressed"
-keys = ["BTN_MODE"]
-command = "/bin/bash /home/$USER/run_steam.sh"
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/YOUR_USERNAME/run_steam.sh listen
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
 ```
+(Make sure to replace YOUR_USERNAME with your actual Linux username!)
+
 3. Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
 ## 4. Create the Automation Script (run_steam.sh)
 
-Because hkdm runs as root in the background, this script safely bridges the command into your active graphical environment (jeorge01) by passing the exact environment variables needed for both Wayland (wayland-1) and Xwayland (DISPLAY=:1).
+This script does two things:
+1. When started by systemd, it dynamically finds the correct input event for the controller and listens for the button press.
+2. When the button is pressed, it safely bridges the command into your active graphical session (Wayland/Hyprland) with correct display variables.
 
-It also includes a safety check so that hitting the button while a game is running will not restart or interrupt Steam.
-
-1. Create or open the script in your home directory:
+Create the script in your home directory:
 ```bash
-nano /home/jeorge01/run_steam.sh
+nano ~/run_steam.sh
 ```
-2. Paste the following code:
+Paste the following code:
 ```bash
 #!/bin/bash
-# Redirect logs and errors to a file for easy debugging
-exec > /home/jeorge01/steam_error.log 2>&1
 
-echo "=== SCRIPT TRIGGERED BY HKDM ==="
+# === CONFIGURATION ===
+# Replace these with your actual username and UID (run 'id' in terminal if unsure)
+USER_NAME="YOUR_USERNAME"
+USER_ID="1000"
+DISPLAY_VAR=":0"
+WAYLAND_VAR="wayland-0"
+# =====================
+
+# If started with "listen", act as the background listener
+if [ "$1" == "listen" ]; then
+    # Dynamically find the correct event number for the Xbox controller
+    EVENT_NUM=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+' | head -n1)
+    
+    if [ -z "$EVENT_NUM" ]; then
+        echo "Could not find Microsoft X-Box 360 pad in the system!" >&2
+        exit 1
+    fi
+    
+    # Listen to the device and trigger the script when BTN_MODE (code 316) is pressed
+    evtest /dev/input/event$EVENT_NUM | while read -r line; do
+        if echo "$line" | grep -q 'code 316 (BTN_MODE), value 1'; then
+            /bin/bash /home/$USER_NAME/run_steam.sh trigger
+        fi
+    done
+    exit 0
+fi
+
+# --- TRIGGER EXECUTION ---
+exec > /home/$USER_NAME/steam_error.log 2>&1
+
+echo "=== SCRIPT TRIGGERED BY SYSTEMD ==="
 echo "Date/Time: $(date)"
 
-# Check if Steam is already running for your user
-if pgrep -u jeorge01 -x "steam" > /dev/null
-then
-    echo "Steam is already running! Ignoring button press to prevent interruption."
+if pgrep -u $USER_NAME -x "steam" > /dev/null; then
+    echo "Steam is already running! Sending command to open Big Picture Mode..."
+    su - $USER_NAME -c "DISPLAY=$DISPLAY_VAR WAYLAND_DISPLAY=$WAYLAND_VAR XDG_RUNTIME_DIR=/run/user/$USER_ID steam steam://open/bigpicture &"
 else
     echo "Steam is not running. Launching Big Picture Mode..."
-    # Log into your user session and forward the exact display variables
-    su - jeorge01 -c "DISPLAY=:1 WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 steam -bigpicture &"
+    su - $USER_NAME -c "DISPLAY=$DISPLAY_VAR WAYLAND_DISPLAY=$WAYLAND_VAR XDG_RUNTIME_DIR=/run/user/$USER_ID steam -bigpicture &"
 fi
 ```
 3. Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
 ## 5. Permissions & Activation
 
-Make the script executable and enable the background daemon to apply the changes:
+Make the script executable, reload systemd configurations, and enable the service:
 
 ```bash
-# Make the script executable
-chmod +x /home/jeorge01/run_steam.sh
+# Make the script executable (adjust path if needed)
+chmod +x ~/run_steam.sh
 
-# Enable and restart the hkdm service to load steam.toml
-sudo systemctl enable hkdm
-sudo systemctl restart hkdm
+# Enable and start the new systemd service
+sudo systemctl daemon-reload
+sudo systemctl enable --now xbox-steam.service
 ```
 
 ## Troubleshooting
 
 If Steam doesn't open when you press the button, check the generated log file to see what went wrong:
 ```bash
-cat /home/jeorge01/steam_error.log
+cat ~/steam_error.log
 ```
 
-You can also run hkdm interactively in your terminal as root to see live button triggers:
+To check if the service successfully located your controller and is actively running, use:
 ```bash
-sudo hkdm
+sudo systemctl status xbox-steam.service
 ```
 (Press the Xbox button and verify it matches BTN_MODE and successfully executes the bash command).
