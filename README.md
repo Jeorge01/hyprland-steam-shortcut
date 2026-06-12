@@ -115,7 +115,7 @@ if [ "$1" == "listen" ]; then
 
     # Loop until the controller is actually found in the system
     while true; do
-        EVENT_NUMS=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) pr>
+        EVENT_NUMS=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
 
         if [ -n "$EVENT_NUMS" ]; then
             break
@@ -133,10 +133,15 @@ if [ "$1" == "listen" ]; then
             fi
         done
     done
-    exit 0
+
+    # CRUCIAL: Keep the main listener loop alive forever so systemd never restarts the service
+    while true; do
+        sleep 60
+    done
 fi
 
 # --- TRIGGER EXECUTION ---
+# Redirect logs to the specified user's home directory
 exec >> "/home/$USER_NAME/steam_error.log" 2>&1
 
 echo "========================================="
@@ -144,15 +149,16 @@ echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
 echo "Timestamp: $(date)"
 echo "-----------------------------------------"
 
-# Check for existing Steam processes
+# Check for existing Steam processes for the specified user
 PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
 
+# We run nohup INSIDE the sudo session to fully detach Steam from systemd
 if [ -n "$PID_LIST" ]; then
     echo "Status: Steam is already running! Sending command to open Big Picture Mode..."
-    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" s>
+    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" nohup steam steam://open/bigpicture >/dev/null 2>&1 &
 else
     echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
-    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" s>
+    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" nohup steam -bigpicture >/dev/null 2>&1 &
 fi
 
 echo "=== TRIGGER COMPLETE ==="
