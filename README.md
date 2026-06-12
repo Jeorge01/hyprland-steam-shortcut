@@ -57,7 +57,7 @@ sudo nano /etc/systemd/system/xbox-steam.service
 ```Ini, TOML
 [Unit]
 Description=Xbox Steam Big Picture Trigger
-After=multi-user.target systemd-udevd.service
+After=systemd-udevd.service
 
 [Service]
 Type=simple
@@ -71,7 +71,7 @@ KillMode=control-group
 SendSIGKILL=yes
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=basic.target
 ```
 (Make sure to replace YOUR_USERNAME with your actual Linux username!)
 
@@ -113,10 +113,9 @@ SCRIPT_PATH="$(realpath "$0")"
 if [ "$1" == "listen" ]; then
     echo "Starting listener..."
 
-    # Loop until the controller is actually found in the system (safe for systemd boot)
+    # Loop until the controller is actually found in the system
     while true; do
-        # Dynamically find ALL event numbers matching the controller name
-        EVENT_NUMS=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        EVENT_NUMS=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) pr>
 
         if [ -n "$EVENT_NUMS" ]; then
             break
@@ -130,7 +129,6 @@ if [ "$1" == "listen" ]; then
         echo "Listening on /dev/input/event$NUM"
         evtest /dev/input/event$NUM 2>/dev/null | while read -r line; do
             if echo "$line" | grep -q 'code 316 (BTN_MODE), value 1'; then
-                # Trigger the execution block asynchronously
                 /bin/bash "$SCRIPT_PATH" trigger &
             fi
         done
@@ -139,7 +137,6 @@ if [ "$1" == "listen" ]; then
 fi
 
 # --- TRIGGER EXECUTION ---
-# Redirect logs to the specified user's home directory
 exec >> "/home/$USER_NAME/steam_error.log" 2>&1
 
 echo "========================================="
@@ -147,16 +144,15 @@ echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
 echo "Timestamp: $(date)"
 echo "-----------------------------------------"
 
-# Check for existing Steam processes for the specified user
+# Check for existing Steam processes
 PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
 
-# Handle execution using 'sudo -u env' to properly preserve Wayland variables
 if [ -n "$PID_LIST" ]; then
     echo "Status: Steam is already running! Sending command to open Big Picture Mode..."
-    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" steam steam://open/bigpicture
+    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" s>
 else
     echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
-    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" steam -bigpicture
+    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" s>
 fi
 
 echo "=== TRIGGER COMPLETE ==="
