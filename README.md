@@ -53,7 +53,7 @@ Instead of using a desktop-level hotkey daemon (which Wayland often blocks), we 
 ```bash
 sudo nano /etc/systemd/system/xbox-steam.service
 ```
-2. Paste the following configuration:
+⚠️ Paste the following code and remember to change YOUR_USERNAME to your actual username ⚠️
 ```Ini, TOML
 [Unit]
 Description=Xbox Steam Big Picture Trigger
