@@ -58,13 +58,18 @@ sudo nano /etc/systemd/system/xbox-steam.service
 ```Ini, TOML
 [Unit]
 Description=Xbox Steam Big Picture Trigger
-After=multi-user.target
+After=multi-user.target systemd-udevd.service
 
 [Service]
 Type=simple
+# NOTE: Users should replace 'YOUR_USERNAME' with their actual username
 ExecStart=/bin/bash /home/YOUR_USERNAME/run_steam.sh listen
 Restart=always
-RestartSec=2
+RestartSec=5
+
+# Force systemd to kill BOTH the wrapper script and evtest simultaneously on restart
+KillMode=control-group
+SendSIGKILL=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -88,45 +93,70 @@ Paste the following code:
 #!/bin/bash
 
 # === CONFIGURATION ===
-# Replace these with your actual username and UID (run 'id' in terminal if unsure)
+# Replace these with your actual username, UID, and display variables
+# (Run 'id' in terminal if you are unsure about your USER_NAME or USER_ID)
 USER_NAME="YOUR_USERNAME"
 USER_ID="1000"
-DISPLAY_VAR=":0"
-WAYLAND_VAR="wayland-0"
+DISPLAY_VAR=":1"
+WAYLAND_VAR="wayland-1"
 # =====================
+
+# Automatically detect the script's own path dynamically so the user 
+# doesn't have to hardcode /home/username/run_steam.sh inside the loops.
+SCRIPT_PATH="$(realpath "$0")"
 
 # If started with "listen", act as the background listener
 if [ "$1" == "listen" ]; then
-    # Dynamically find the correct event number for the Xbox controller
-    EVENT_NUM=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+' | head -n1)
-    
-    if [ -z "$EVENT_NUM" ]; then
-        echo "Could not find Microsoft X-Box 360 pad in the system!" >&2
-        exit 1
-    fi
-    
-    # Listen to the device and trigger the script when BTN_MODE (code 316) is pressed
-    evtest /dev/input/event$EVENT_NUM | while read -r line; do
-        if echo "$line" | grep -q 'code 316 (BTN_MODE), value 1'; then
-            /bin/bash /home/$USER_NAME/run_steam.sh trigger
+    echo "Starting listener..."
+
+    # Loop until the controller is actually found in the system (safe for systemd boot)
+    while true; do
+        # Dynamically find ALL event numbers matching the controller name
+        EVENT_NUMS=$(awk '/Name="Microsoft X-Box 360 pad"/{cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+
+        if [ -n "$EVENT_NUMS" ]; then
+            break
         fi
+        echo "No controller found yet. Retrying in 3 seconds..."
+        sleep 3
+    done
+
+    # Start a parallel background listener for each matching event node
+    for NUM in $EVENT_NUMS; do
+        echo "Listening on /dev/input/event$NUM"
+        evtest /dev/input/event$NUM 2>/dev/null | while read -r line; do
+            if echo "$line" | grep -q 'code 316 (BTN_MODE), value 1'; then
+                # Trigger the execution block asynchronously
+                /bin/bash "$SCRIPT_PATH" trigger &
+            fi
+        done
     done
     exit 0
 fi
 
 # --- TRIGGER EXECUTION ---
-exec > /home/$USER_NAME/steam_error.log 2>&1
+# Redirect logs to the specified user's home directory
+exec >> "/home/$USER_NAME/steam_error.log" 2>&1
 
-echo "=== SCRIPT TRIGGERED BY SYSTEMD ==="
-echo "Date/Time: $(date)"
+echo "========================================="
+echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
+echo "Timestamp: $(date)"
+echo "-----------------------------------------"
 
-if pgrep -u $USER_NAME -x "steam" > /dev/null; then
-    echo "Steam is already running! Sending command to open Big Picture Mode..."
-    su - $USER_NAME -c "DISPLAY=$DISPLAY_VAR WAYLAND_DISPLAY=$WAYLAND_VAR XDG_RUNTIME_DIR=/run/user/$USER_ID steam steam://open/bigpicture &"
+# Check for existing Steam processes for the specified user
+PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
+
+# Handle execution using 'sudo -u env' to properly preserve Wayland variables
+if [ -n "$PID_LIST" ]; then
+    echo "Status: Steam is already running! Sending command to open Big Picture Mode..."
+    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" steam steam://open/bigpicture
 else
-    echo "Steam is not running. Launching Big Picture Mode..."
-    su - $USER_NAME -c "DISPLAY=$DISPLAY_VAR WAYLAND_DISPLAY=$WAYLAND_VAR XDG_RUNTIME_DIR=/run/user/$USER_ID steam -bigpicture &"
+    echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
+    sudo -u "$USER_NAME" env DISPLAY="$DISPLAY_VAR" WAYLAND_DISPLAY="$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/$USER_ID" steam -bigpicture
 fi
+
+echo "=== TRIGGER COMPLETE ==="
+echo "========================================="
 ```
 3. Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
