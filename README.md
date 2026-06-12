@@ -6,9 +6,8 @@ A guide and script to map the Xbox/Guide (Home/Mode) button on your controller (
 
 ## 1. Prerequisites & Installation
 
-To capture controller inputs globally (even when no window is focused) and bypass Wayland's strict security layers, we need a driver, an input testing utility, and a background hotkey daemon.
-
-Install the following packages using your package manager (e.g., `pacman` on Arch Linux):
+To capture controller inputs globally (even when no window is focused) and bypass Wayland's strict security layers, we need an input testing utility and a background system service.
+Install the following package using your package manager (e.g., `pacman` on Arch Linux):
 
 ```bash
 # 1. xpad - Standard Xbox controller driver (usually built into the kernel, make sure it's not blacklisted)
@@ -88,7 +87,9 @@ Create the script in your home directory:
 ```bash
 nano ~/run_steam.sh
 ```
-Paste the following code:
+
+⚠️ Paste the following code and remember to change the variables ⚠️
+
 ```bash
 #!/bin/bash
 
@@ -97,6 +98,9 @@ Paste the following code:
 # (Run 'id' in terminal if you are unsure about your USER_NAME or USER_ID)
 USER_NAME="YOUR_USERNAME"
 USER_ID="1000"
+
+# NOTE: Run 'echo $DISPLAY' and 'echo $WAYLAND_DISPLAY' in your terminal 
+# to verify if your session uses :0/wayland-0 or :1/wayland-1
 DISPLAY_VAR=":1"
 WAYLAND_VAR="wayland-1"
 # =====================
