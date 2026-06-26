@@ -19,12 +19,21 @@ sudo pacman -S evtest
 
 Sometimes the standard Xbox controller driver (xpad) is not loaded automatically by the kernel, making the controller completely invisible to evtest.
 
-1. Force load the driver immediately:
+#### 1. Check if it's loaded
+Run the following command to see if the driver is currently running in the background:
+```bash
+lsmod | grep xpad
+```
+
+#### 2. Force load the driver immediately
+If it wasn't running, you can manually force the kernel to load it right now by running:
 ```bash
 sudo modprobe xpad
 ```
+If this command returns no output, it means the driver is not currently active.
 
-2. Ensure the driver loads automatically on boot:
+#### 3. Ensure the driver loads automatically on boot:
+To prevent having to do this manually every time you restart your system, create a configuration file that tells Arch to always load xpad at startup:
 ```bash
 echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf
 ```
