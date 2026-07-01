@@ -70,10 +70,16 @@ echo " - Wayland: $WAYLAND_VAR"
 echo "-----------------------------------------"
 
 # -------------------------------------------------------------------------
-# STEP 4: CREATE FILES & ACTIVATE
+# STEP 4: CREATE FILES & ACTIVATE (Idempotent / Safe to re-run)
 # -------------------------------------------------------------------------
 
-echo "📝 Creating automation script (~/run_steam.sh)..."
+# Stop the service first if it's already running, so we can safely overwrite files
+if systemctl is-active --quiet xbox-steam.service; then
+    echo "🔄 Existing service detected. Stopping it safely for update..."
+    sudo systemctl stop xbox-steam.service
+fi
+
+echo "📝 Creating/Updating automation script (~/run_steam.sh)..."
 cat << EOF > "$HOME/run_steam.sh"
 #!/bin/bash
 
@@ -135,7 +141,7 @@ EOF
 
 chmod +x "$HOME/run_steam.sh"
 
-echo "⚙️ Creating systemd service (/etc/systemd/system/xbox-steam.service)..."
+echo "⚙️ Creating/Updating systemd service (/etc/systemd/system/xbox-steam.service)..."
 sudo cat << EOF > /etc/systemd/system/xbox-steam.service
 [Unit]
 Description=Xbox Steam Big Picture Trigger
@@ -153,12 +159,13 @@ SendSIGKILL=yes
 WantedBy=basic.target
 EOF
 
-echo "🔄 Reloading systemd and starting service..."
+echo "🔄 Reloading systemd and restarting service..."
 sudo systemctl daemon-reload
-sudo systemctl enable --now xbox-steam.service
+sudo systemctl unmask xbox-steam.service
+sudo systemctl reenable --now xbox-steam.service
 
 echo "-----------------------------------------"
-echo "✅ Installation complete!"
+echo "✅ Installation/Update complete!"
 echo "Try pressing the Xbox/Guide button on your controller."
 echo "If it doesn't work, check the log: cat ~/steam_error.log"
 echo "========================================="
