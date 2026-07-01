@@ -1,10 +1,35 @@
 # Hyprland Steam Shortcut (Xbox/Guide Button Fix)
 
-A guide and script to map the Xbox/Guide (Home/Mode) button on your controller (e.g., Flydigi, Xbox controllers) to launch **Steam Big Picture** globally in a modern Hyprland/Wayland session.
+Automated background service to map the Xbox/Guide button on your controller (Xbox, Flydigi, etc.) to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
 
 ---
 
-## 1. Prerequisites & Installation
+## Installation
+
+You can install or update the shortcut trigger automatically using the following command.
+
+### One-line Installer (Recommended)
+Open your terminal and run:
+
+```bash
+curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash
+```
+You could also clone or download the install.sh file and run it like this
+
+```bash
+# Clone the repository
+git clone https://github.com/Jeorge01/hyprland-steam-shortcut.git
+cd hyprland-steam-shortcut
+
+# Make the installer executable and run it
+chmod +x install.sh
+./install.sh
+```
+---
+
+## Manual Installation (Alternative)
+
+### 1. Prerequisites & Installation
 
 To capture controller inputs globally (even when no window is focused) and bypass Wayland's strict security layers, we need an input testing utility and a background system service.
 Install the following package using your package manager (e.g., `pacman` on Arch Linux):
@@ -38,7 +63,7 @@ To prevent having to do this manually every time you restart your system, create
 echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf
 ```
 
-## 2. Identify the Button Name using evtest
+### 2. Identify the Button Name using evtest
 
 Before writing the configuration, we must find out exactly what the system calls your Xbox/Mode button.
 
@@ -54,7 +79,7 @@ sudo evtest
 Event: time 1717968600.123456, type 1 (EV_KEY), code 316 (BTN_MODE), value 1
 ```
 
-## 3. Create the Systemd Service
+### 3. Create the Systemd Service
 
 Instead of using a desktop-level hotkey daemon (which Wayland often blocks), we create a lightweight systemd service that monitors the controller directly at the kernel layer using evtest.
 
@@ -175,7 +200,7 @@ echo "========================================="
 ```
 3. Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
-## 5. Permissions & Activation
+### 5. Permissions & Activation
 
 Make the script executable, reload systemd configurations, and enable the service:
 
@@ -188,7 +213,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now xbox-steam.service
 ```
 
-## Troubleshooting
+### Troubleshooting
 
 If Steam doesn't open when you press the button, check the generated log file to see what went wrong:
 ```bash
