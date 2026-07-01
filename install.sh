@@ -142,7 +142,7 @@ EOF
 chmod +x "$HOME/run_steam.sh"
 
 echo "⚙️ Creating/Updating systemd service (/etc/systemd/system/xbox-steam.service)..."
-sudo cat << EOF > /etc/systemd/system/xbox-steam.service
+cat << EOF | sudo tee /etc/systemd/system/xbox-steam.service > /dev/null
 [Unit]
 Description=Xbox Steam Big Picture Trigger
 After=systemd-udevd.service
@@ -162,7 +162,8 @@ EOF
 echo "🔄 Reloading systemd and restarting service..."
 sudo systemctl daemon-reload
 sudo systemctl unmask xbox-steam.service
-sudo systemctl reenable --now xbox-steam.service
+sudo systemctl enable xbox-steam.service      # Gör så den startar vid boot
+sudo systemctl restart xbox-steam.service     # Tvingar igång den live NU direkt
 
 echo "-----------------------------------------"
 echo "✅ Installation/Update complete!"
