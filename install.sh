@@ -75,7 +75,8 @@ echo "-----------------------------------------"
 
 # Stop the service first if it's already running, so we can safely overwrite files
 if systemctl is-active --quiet xbox-steam.service; then
-    echo "🔄 Existing service detected. Stopping it safely for update..."
+    echo "🔄 Existing service detected. Restarting the background listener safely..."
+    echo "ℹ️  (Don't worry, your running games or Steam won't be closed!)"
     sudo systemctl stop xbox-steam.service
 fi
 
@@ -152,7 +153,7 @@ Type=simple
 ExecStart=/bin/bash /home/$USER_NAME/run_steam.sh listen
 Restart=always
 RestartSec=5
-KillMode=control-group
+KillMode=process
 SendSIGKILL=yes
 
 [Install]
