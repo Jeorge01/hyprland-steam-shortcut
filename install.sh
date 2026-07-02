@@ -78,7 +78,7 @@ echo "-----------------------------------------"
 # -------------------------------------------------------------------------
 # LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
-echo -e "${YELLOW}🎮 CONTROLLER CALIBRATION READY${CLEAR}"
+echo -e "${BLUE}🎮 CONTROLLER CALIBRATION READY${CLEAR}"
 echo -e "   Before we begin, make sure your controller is turned ON and connected."
 echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
@@ -180,23 +180,28 @@ if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
     while true; do
-        # Dynamically find event numbers for the chosen device name
-        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" '\$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        
+        if [ -z "\$EVENT_NUMS" ]; then
+            EVENT_NUMS=\$(awk 'BEGIN{IGNORECASE=1} \$0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        fi
 
         if [ -n "\$EVENT_NUMS" ]; then
             break
         fi
-        echo "Controller '\$TARGET_DEV_NAME' not found yet. Retrying in 5 seconds..."
+        echo "Controller not found yet. Retrying in 5 seconds..."
         sleep 5
     done
 
     for NUM in \$EVENT_NUMS; do
         echo "Listening on /dev/input/event\$NUM"
-        evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
-            if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
-                /bin/bash "\$SCRIPT_PATH" trigger &
-            fi
-        done
+        (
+            evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
+                if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
+                    /bin/bash "\$SCRIPT_PATH" trigger &
+                fi
+            done
+        ) &
     done
 
     while true; do
@@ -214,8 +219,8 @@ echo "-----------------------------------------"
 PID_LIST=\$(pgrep -u "\$USER_NAME" -x "steam")
 
 if [ -n "\$PID_LIST" ]; then
-    echo "Status: Steam is already running! Sending command to open Big Picture Mode..."
-    sudo -u "\$USER_NAME" env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" nohup steam steam://open/bigpicture >/dev/null 2>&1 &
+    echo "Status: Steam is already running! Triggering Big Picture via XDG..."
+    sudo -u "\$USER_NAME" env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1 &
 else
     echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
     sudo -u "\$USER_NAME" env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" nohup steam -bigpicture >/dev/null 2>&1 &
