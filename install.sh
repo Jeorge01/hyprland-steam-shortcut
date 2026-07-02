@@ -3,11 +3,11 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-GREEN='\033[38;2;40;180;99m'    # Riktig klargrön
-YELLOW='\033[38;2;244;208;63m'  # Riktig klargul
-RED='\033[38;2;231;76;60m'      # Riktig klarröd
-BLUE='\033[38;2;52;152;219m'    # Riktig klarblå
-CYAN='\033[38;2;26;188;156m'    # Riktig klarcyan
+GREEN='\033[38;2;40;180;99m'
+YELLOW='\033[38;2;244;208;63m'
+RED='\033[38;2;231;76;60m'
+BLUE='\033[38;2;52;152;219m'
+CYAN='\033[38;2;26;188;156m'
 CLEAR='\033[0m'
 
 echo -e ""
@@ -78,10 +78,13 @@ echo "-----------------------------------------"
 # -------------------------------------------------------------------------
 # LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
-echo "🎮 CONTROLLER CALIBRATION"
-echo "   Please press the button you want to bind NOW..."
+echo -e "${YELLOW}🎮 CONTROLLER CALIBRATION READY${CLEAR}"
+echo -e "   Before we begin, make sure your controller is turned ON and connected."
+echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
-echo -e -n "⏳ Waiting for controller input ${YELLOW}(Timeout in 60s)${CLEAR} "
+echo -e -n "👉 Press ${GREEN}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
+read -r
+echo ""
 
 # Create a temporary file to store output from background workers
 TMP_CAPTURE=$(mktemp)
