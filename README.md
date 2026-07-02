@@ -101,7 +101,7 @@ Restart=always
 RestartSec=5
 
 # Force systemd to kill BOTH the wrapper script and evtest simultaneously on restart
-KillMode=control-group
+KillMode=process
 SendSIGKILL=yes
 
 [Install]
