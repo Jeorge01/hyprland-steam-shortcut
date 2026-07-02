@@ -3,19 +3,18 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# --- TERMINAL COLORS ---
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
+GREEN='\033[38;2;40;180;99m'    # Riktig klargrön
+YELLOW='\033[38;2;244;208;63m'  # Riktig klargul
+RED='\033[38;2;231;76;60m'      # Riktig klarröd
+BLUE='\033[38;2;52;152;219m'    # Riktig klarblå
+CYAN='\033[38;2;26;188;156m'    # Riktig klarcyan
 CLEAR='\033[0m'
 
-echo ""
-echo "========================================="
-echo "  Hyprland Steam Shortcut Install script"
-echo "========================================="
-echo ""
+echo -e ""
+echo -e "${GREEN}=========================================${CLEAR}"
+echo -e "${GREEN}  Hyprland Steam Shortcut Install script${CLEAR}"
+echo -e "${GREEN}=========================================${CLEAR}"
+echo -e ""
 
 sudo -v || exit 1
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
@@ -142,10 +141,10 @@ else
     fi
 
     echo ""
-    echo -e "${GREEN}-----------------------------------------${CLEAR}"
+    echo -e "-----------------------------------------"
     echo -e "   ${GREEN}Button press detected!${CLEAR}"
-    echo -e "   ${GREEN}Detected Device: ${TARGET_DEV_NAME}${CLEAR}"
-    echo -e "   ${GREEN}Mapped Button:   ${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})${CLEAR}"
+    echo -e "   ${GREEN}Detected Device:${CLEAR} ${TARGET_DEV_NAME}"
+    echo -e "   ${GREEN}Mapped Button:${CLEAR}   ${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})"
 fi
 echo "-----------------------------------------"
 
@@ -155,7 +154,6 @@ echo "-----------------------------------------"
 
 if systemctl is-active --quiet xbox-steam.service; then
     echo "🔄 Existing service detected. Restarting the background listener safely..."
-    echo "   (Don't worry, your running games or Steam won't be closed!)"
     sudo systemctl stop xbox-steam.service
 fi
 
