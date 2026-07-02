@@ -83,7 +83,7 @@ echo -e "   Before we begin, make sure your controller is turned ON and connecte
 echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
 echo -e -n "👉 Press ${GREEN}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
-read -r
+read -r </dev/tty
 echo ""
 
 # Create a temporary file to store output from background workers
