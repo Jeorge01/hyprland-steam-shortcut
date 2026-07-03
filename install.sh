@@ -79,7 +79,7 @@ echo "-----------------------------------------"
 # LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
 echo -e "${BLUE}🎮 CONTROLLER CALIBRATION READY${CLEAR}"
-echo -e "   Before we begin, make sure your controller is turned ON and connected."
+echo -e "   Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
 echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
 echo -e -n "👉 Press ${GREEN}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
