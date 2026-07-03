@@ -179,21 +179,16 @@ if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
     while true; do
-        # 1. Dynamisk väntan: Loopa tills udev har registrerat kontrollens exakta namn
-        until awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name' /proc/bus/input/devices >/dev/null 2>&1; do
-            echo "Waiting for controller (\$TARGET_DEV_NAME) to initialize..."
+        # 1. Vänta: Loopa tills udev registrerar en enhet som börjar med ditt kalibrerade namn
+        until awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index(\$0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
+            echo "Waiting for your specific controller (\$TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
 
-        # 2. Hämta event-numren för den kalibrerade kontrollen
-        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        # 2. Hämta event-numren för alla enheter som matchar prefixet
+        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index(\$0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
         
-        # Fallback: Om den kalibrerade kontrollen mot förmodan inte gav några event-nummer, sök efter generiska nyckelord
-        if [ -z "\$EVENT_NUMS" ]; then
-            EVENT_NUMS=\$(awk 'BEGIN{IGNORECASE=1} \$0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-        fi
-
-        # 3. Vänta aktivt tills udev har skapat de fysiska filerna och gjort dem läsbara
+        # 3. Vänta tills udev har gjort filerna läsbara
         for NUM in \$EVENT_NUMS; do
             until [ -r "/dev/input/event\$NUM" ]; do
                 echo "Waiting for /dev/input/event\$NUM to become readable..."
@@ -201,12 +196,11 @@ if [ "\$1" == "listen" ]; then
             done
         done
 
-        echo "Controller files are ready and readable! Initializing listeners..."
+        echo "Your calibrated controller is ready! Initializing listener..."
 
-        # Store the process IDs of our background listeners
         LISTENER_PIDS=""
 
-        # Start a background listener for EACH matching event node
+        # Starta lyssnare på alla matchande event-noder
         for NUM in \$EVENT_NUMS; do
             if [ -e "/dev/input/event\$NUM" ]; then
                 echo "Listening on /dev/input/event\$NUM"
@@ -221,7 +215,7 @@ if [ "\$1" == "listen" ]; then
             fi
         done
 
-        # Monitor loop: Check if our exact spawned background listeners are actually alive
+        # Övervaka så att kontrollerna inte kopplas ur
         while [ -n "\$LISTENER_PIDS" ]; do
             sleep 10
             ANY_ALIVE=0
@@ -232,7 +226,7 @@ if [ "\$1" == "listen" ]; then
             done
             
             if [ \$ANY_ALIVE -eq 0 ]; then
-                echo "⚠️ All background listeners disconnected. Re-scanning hardware..."
+                echo "⚠️ Controller disconnected. Re-scanning hardware..."
                 break
             fi
         done
