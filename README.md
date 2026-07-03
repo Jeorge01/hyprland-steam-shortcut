@@ -1,6 +1,6 @@
-# Hyprland Steam Shortcut (Xbox/Guide Button Fix)
+# Hyprland Steam Shortcut (Controller Button Trigger)
 
-Automated background service to map the Xbox/Guide button on your controller (Xbox, Flydigi, etc.) to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
+Automated background service that maps any designated controller button to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
 
 ---
 
@@ -65,14 +65,14 @@ echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf
 
 ### 2. Identify the Button Name using evtest
 
-Before writing the configuration, we must find out exactly what the system calls your Xbox/Mode button.
+Before writing the configuration, we must find out exactly what the system calls your custom shortcut button.
 
 1. Run evtest as root:
 ```bash
 sudo evtest
 ```
 2. You will see a list of all available input devices. Locate your controller (e.g., Microsoft X-Box 360 pad or Flydigi), type its corresponding number, and press Enter.
-3. Press the Xbox/Guide button on your controller.
+3. Press the designated button you wish to use as a shortcut on your controller (e.g., Xbox/Guide, Share, or a back paddle).
 4. Look at the terminal output. Search for (EV_KEY) and the name inside the parentheses. For example:
 
 ```Plaintext
@@ -136,9 +136,8 @@ WAYLAND_VAR="wayland-1"
 # The name of your controller (or a unique keyword from its name)
 TARGET_DEV_NAME="Microsoft X-Box 360 pad"
 
-# The button code and name you want to trigger Steam (get this via evtest)
-# For example:
-# Event: time 1717968600.123456, type 1 (EV_KEY), code 316 (BTN_MODE), value 1
+# The button code and name you want to trigger Steam (get this via evtest).
+# You can map this to ANY button on your device (e.g., Guide, Share, Back buttons).
 TARGET_BTN_CODE="316"
 TARGET_BTN_NAME="BTN_MODE"
 # =====================
@@ -149,19 +148,14 @@ if [ "$1" == "listen" ]; then
     echo "Starting listener..."
 
     while true; do
-        # 1. Dynamic wait: Loop until udev registers the controller's exact name
-        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} $0 ~ name' /proc/bus/input/devices >/dev/null 2>&1; do
+        # 1. Dynamic wait: Loop until udev registers a device starting with your calibrated name
+        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
             echo "Waiting for controller ($TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
 
-        # 2. Extract event numbers for the matching controller
-        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} $0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-        
-        # Fallback: If specific name yields no event numbers, look for generic controller keywords
-        if [ -z "$EVENT_NUMS" ]; then
-            EVENT_NUMS=$(awk 'BEGIN{IGNORECASE=1} $0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-        fi
+        # 2. Extract event numbers for all matching controllers (handles suffixes like pad 0, pad 1)
+        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
 
         # 3. Actively wait until udev creates the physical files and applies permissions
         for NUM in $EVENT_NUMS; do
@@ -275,4 +269,6 @@ To check if the service successfully located your controller and is actively run
 ```bash
 sudo systemctl status xbox-steam.service
 ```
-(Press the Xbox button and verify it matches BTN_MODE and successfully executes the bash command).
+
+## License
+This project is licensed under the [MIT License](LICENSE).
