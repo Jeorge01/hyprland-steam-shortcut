@@ -100,8 +100,6 @@ Type=simple
 ExecStart=/bin/bash /home/YOUR_USERNAME/run_steam.sh listen
 Restart=always
 RestartSec=3
-KillMode=process
-SendSIGKILL=no
 
 [Install]
 WantedBy=basic.target
