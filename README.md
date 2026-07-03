@@ -136,11 +136,9 @@ WAYLAND_VAR="wayland-1"
 # The name of your controller (or a unique keyword from its name)
 TARGET_DEV_NAME="Microsoft X-Box 360 pad"
 
-# The button code and name you want to trigger Steam you we got earlier with evtest
-
+# The button code and name you want to trigger Steam (get this via evtest)
 # For example:
 # Event: time 1717968600.123456, type 1 (EV_KEY), code 316 (BTN_MODE), value 1
-# Then TARGET_BTN_CODE should be "316" and TARGET_BTN_NAME should be "BTN_MODE"  
 TARGET_BTN_CODE="316"
 TARGET_BTN_NAME="BTN_MODE"
 # =====================
@@ -149,27 +147,31 @@ SCRIPT_PATH="$(realpath "$0")"
 
 if [ "$1" == "listen" ]; then
     echo "Starting listener..."
-    
-    # Give the system a brief moment at boot to let devices register
-    sleep 5
 
     while true; do
-        while true; do
-            # 1. Try to find the exact calibrated device name
-            EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} $0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-            
-            # 2. Fallback to generic keywords if the specific name isn't found
-            if [ -z "$EVENT_NUMS" ]; then
-                sleep 5
-                EVENT_NUMS=$(awk 'BEGIN{IGNORECASE=1} $0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-            fi
-
-            if [ -n "$EVENT_NUMS" ]; then
-                break
-            fi
-            echo "Controller not found yet. Retrying in 5 seconds..."
-            sleep 5
+        # 1. Dynamic wait: Loop until udev registers the controller's exact name
+        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} $0 ~ name' /proc/bus/input/devices >/dev/null 2>&1; do
+            echo "Waiting for controller ($TARGET_DEV_NAME) to initialize..."
+            sleep 2
         done
+
+        # 2. Extract event numbers for the matching controller
+        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} $0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        
+        # Fallback: If specific name yields no event numbers, look for generic controller keywords
+        if [ -z "$EVENT_NUMS" ]; then
+            EVENT_NUMS=$(awk 'BEGIN{IGNORECASE=1} $0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        fi
+
+        # 3. Actively wait until udev creates the physical files and applies permissions
+        for NUM in $EVENT_NUMS; do
+            until [ -r "/dev/input/event$NUM" ]; do
+                echo "Waiting for /dev/input/event$NUM to become readable..."
+                sleep 0.2
+            done
+        done
+
+        echo "Controller files are ready and readable! Initializing listeners..."
 
         # Store the process IDs of our background listeners
         LISTENER_PIDS=""
@@ -189,7 +191,8 @@ if [ "$1" == "listen" ]; then
             fi
         done
 
-        # Monitor loop: Re-scan hardware dynamically if all background processes die
+        # Monitor loop: Check if our exact spawned background listeners are actually alive
+        # If the controller disconnects, this loop breaks to re-scan hardware
         while [ -n "$LISTENER_PIDS" ]; do
             sleep 10
             ANY_ALIVE=0
