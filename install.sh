@@ -135,9 +135,7 @@ else
     DETECTED_EV=$(echo "$CAPTURED_LINE" | awk -F':' '{print $1}')
     TARGET_BTN_CODE=$(echo "$CAPTURED_LINE" | grep -oP 'code \K[0-9]+')
     TARGET_BTN_NAME=$(echo "$CAPTURED_LINE" | grep -oP 'BTN_[A-Z0-9]+')
-    
-    # Resolve the event number back to the permanent device name
-    TARGET_DEV_NAME=$(awk -v ev="${DETECTED_EV##*/}" '$0 ~ ev {cat=1} cat && /Name=/ {print $0; exit}' /proc/bus/input/devices | tr -d '"' | awk -F'=' '{print $2}')
+    TARGET_DEV_NAME=$(awk -v RS='' '/Handlers=.*'"${DETECTED_EV##*/}"'( |$)/' /proc/bus/input/devices | grep -oP 'Name="\K[^"]+')
     
     if [ -z "$TARGET_DEV_NAME" ]; then
         TARGET_DEV_NAME="Generic Controller"
@@ -245,6 +243,21 @@ if [ "\$1" == "trigger" ]; then
     echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
     echo "Timestamp: \$(date)"
     echo "-----------------------------------------"
+
+    HYPR_PID=\$(pgrep -u "\$USER_NAME" -x Hyprland | head -n 1)
+    if [ -z "\$HYPR_PID" ]; then
+        HYPR_PID=\$(pgrep -u "\$USER_NAME" -f "wayland" | head -n 1)
+    fi
+
+    if [ -n "\$HYPR_PID" ]; then
+        DISPLAY_VAR=\$(grep -z '^DISPLAY=' "/proc/\$HYPR_PID/environ" | cut -d= -f2- | tr -d '\0')
+        WAYLAND_VAR=\$(grep -z '^WAYLAND_DISPLAY=' "/proc/\$HYPR_PID/environ" | cut -d= -f2- | tr -d '\0')
+    fi
+
+    DISPLAY_VAR=\${DISPLAY_VAR:-":1"}
+    WAYLAND_VAR=\${WAYLAND_VAR:-"wayland-1"}
+
+    echo "Resolved display context: DISPLAY=\$DISPLAY_VAR | WAYLAND_DISPLAY=\$WAYLAND_VAR"
 
     PID_LIST=\$(pgrep -u "\$USER_NAME" -x "steam")
 
