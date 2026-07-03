@@ -151,13 +151,14 @@ else
 fi
 echo "-----------------------------------------"
 
-# -------------------------------------------------------------------------
+## -------------------------------------------------------------------------
 # STEP 4: CREATE FILES & ACTIVATE
 # -------------------------------------------------------------------------
 
 if systemctl is-active --quiet xbox-steam.service; then
-    echo "🔄 Existing service detected. Restarting the background listener safely..."
+    echo "🔄 Existing service detected. Stopping safely before update..."
     sudo systemctl stop xbox-steam.service
+    sudo pkill -f evtest || true
 fi
 
 echo "   Creating/Updating automation script (~/run_steam.sh)..."
@@ -179,54 +180,84 @@ SCRIPT_PATH="\$(realpath "\$0")"
 if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
+    # Give the system a brief moment at boot to let USB/Bluetooth devices register
+    sleep 5
+
     while true; do
-        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-        
-        if [ -z "\$EVENT_NUMS" ]; then
-            EVENT_NUMS=\$(awk 'BEGIN{IGNORECASE=1} \$0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-        fi
+        while true; do
+            # 1. Try to find the exact calibrated device name
+            EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+            
+            # 2. If not found, wait another 5 seconds before trying fallback (helps during cold boots)
+            if [ -z "\$EVENT_NUMS" ]; then
+                sleep 5
+                EVENT_NUMS=\$(awk 'BEGIN{IGNORECASE=1} \$0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+            fi
 
-        if [ -n "\$EVENT_NUMS" ]; then
-            break
-        fi
-        echo "Controller not found yet. Retrying in 5 seconds..."
-        sleep 5
-    done
+            if [ -n "\$EVENT_NUMS" ]; then
+                break
+            fi
+            echo "Controller not found yet. Retrying in 5 seconds..."
+            sleep 5
+        done
 
-    for NUM in \$EVENT_NUMS; do
-        echo "Listening on /dev/input/event\$NUM"
-        (
-            evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
-                if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
-                    /bin/bash "\$SCRIPT_PATH" trigger &
+        # Store the process IDs of our background listeners
+        LISTENER_PIDS=""
+
+        # Start a background listener for EACH matching event node
+        for NUM in \$EVENT_NUMS; do
+            if [ -e "/dev/input/event\$NUM" ]; then
+                echo "Listening on /dev/input/event\$NUM"
+                (
+                    evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
+                        if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
+                            /bin/bash "\$SCRIPT_PATH" trigger &
+                        fi
+                    done
+                ) &
+                LISTENER_PIDS="\$LISTENER_PIDS \$!"
+            fi
+        done
+
+        # Monitor loop: Check if our exact spawned background listeners are actually alive
+        while [ -n "\$LISTENER_PIDS" ]; do
+            sleep 10
+            ANY_ALIVE=0
+            for pid in \$LISTENER_PIDS; do
+                if kill -0 \$pid 2>/dev/null; then
+                    ANY_ALIVE=1
                 fi
             done
-        ) &
+            
+            if [ \$ANY_ALIVE -eq 0 ]; then
+                echo "⚠️ All background listeners disconnected. Re-scanning hardware..."
+                break
+            fi
+        done
     done
-
-    while true; do
-        sleep 60
-    done
+    exit 0
 fi
 
 # --- TRIGGER EXECUTION ---
-exec >> "/home/\$USER_NAME/steam_error.log" 2>&1
-echo "========================================="
-echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
-echo "Timestamp: \$(date)"
-echo "-----------------------------------------"
+if [ "\$1" == "trigger" ]; then
+    exec >> "/home/\$USER_NAME/steam_error.log" 2>&1
+    echo "========================================="
+    echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
+    echo "Timestamp: \$(date)"
+    echo "-----------------------------------------"
 
-PID_LIST=\$(pgrep -u "\$USER_NAME" -x "steam")
+    PID_LIST=\$(pgrep -u "\$USER_NAME" -x "steam")
 
-if [ -n "\$PID_LIST" ]; then
-    echo "Status: Steam is already running! Triggering Big Picture via XDG..."
-    sudo -u "\$USER_NAME" env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1 &
-else
-    echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
-    sudo -u "\$USER_NAME" env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" nohup steam -bigpicture >/dev/null 2>&1 &
+    if [ -n "\$PID_LIST" ]; then
+        echo "Status: Steam is already running! Triggering Big Picture via XDG..."
+        systemd-run --user --machine="\${USER_NAME}@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1
+    else
+        echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
+        systemd-run --user --machine="\${USER_NAME}@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" steam -bigpicture >/dev/null 2>&1
+    fi
+    echo "=== TRIGGER COMPLETE ==="
+    echo "========================================="
 fi
-echo "=== TRIGGER COMPLETE ==="
-echo "========================================="
 EOF
 
 chmod +x "$HOME/run_steam.sh"
@@ -242,8 +273,6 @@ Type=simple
 ExecStart=/bin/bash /home/$USER_NAME/run_steam.sh listen
 Restart=always
 RestartSec=3
-KillMode=process
-SendSIGKILL=no
 
 [Install]
 WantedBy=basic.target
