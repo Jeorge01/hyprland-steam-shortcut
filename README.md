@@ -90,7 +90,7 @@ sudo nano /etc/systemd/system/xbox-steam.service
 ⚠️ Paste the following code and remember to change YOUR_USERNAME to your actual username ⚠️
 ```Ini, TOML
 [Unit]
-Description=Xbox Steam Big Picture Trigger
+Description=Steam Big Picture Trigger
 After=systemd-udevd.service
 
 [Service]
@@ -98,11 +98,9 @@ Type=simple
 # NOTE: Users should replace 'YOUR_USERNAME' with their actual username
 ExecStart=/bin/bash /home/YOUR_USERNAME/run_steam.sh listen
 Restart=always
-RestartSec=5
-
-# Force systemd to kill BOTH the wrapper script and evtest simultaneously on restart
+RestartSec=3
 KillMode=process
-SendSIGKILL=yes
+SendSIGKILL=no
 
 [Install]
 WantedBy=basic.target
