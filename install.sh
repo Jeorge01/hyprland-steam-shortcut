@@ -178,6 +178,10 @@ SCRIPT_PATH="\$(realpath "\$0")"
 if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
+    while ! pgrep -u "$USER_NAME" -f "wayland|Hyprland" > /dev/null; do
+        sleep 4
+    done
+    
     # Give the system a brief moment at boot to let USB/Bluetooth devices register
     sleep 5
 
@@ -278,7 +282,7 @@ chmod +x "$HOME/run_steam.sh"
 echo "   Creating/Updating systemd service (/etc/systemd/system/xbox-steam.service)..."
 cat << EOF | sudo tee /etc/systemd/system/xbox-steam.service > /dev/null
 [Unit]
-Description=Xbox Steam Big Picture Trigger
+Description=Steam Big Picture Trigger
 After=systemd-udevd.service
 
 [Service]
