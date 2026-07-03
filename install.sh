@@ -160,7 +160,7 @@ if systemctl is-active --quiet xbox-steam.service; then
 fi
 
 echo "   Creating/Updating automation script (~/run_steam.sh)..."
-cat << EOF > "$HOME/run_steam.sh"
+cat << EOF > /home/$USER_NAME/run_steam.sh
 #!/bin/bash
 
 # === CONFIGURATION (Auto-generated via Calibration) ===
@@ -178,30 +178,30 @@ SCRIPT_PATH="\$(realpath "\$0")"
 if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
-    while ! pgrep -u "$USER_NAME" -f "wayland|Hyprland" > /dev/null; do
-        sleep 4
-    done
-    
-    # Give the system a brief moment at boot to let USB/Bluetooth devices register
-    sleep 5
-
     while true; do
-        while true; do
-            # 1. Try to find the exact calibrated device name
-            EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-            
-            # 2. If not found, wait another 5 seconds before trying fallback (helps during cold boots)
-            if [ -z "\$EVENT_NUMS" ]; then
-                sleep 5
-                EVENT_NUMS=\$(awk 'BEGIN{IGNORECASE=1} \$0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-            fi
-
-            if [ -n "\$EVENT_NUMS" ]; then
-                break
-            fi
-            echo "Controller not found yet. Retrying in 5 seconds..."
-            sleep 5
+        # 1. Dynamisk väntan: Loopa tills udev har registrerat kontrollens exakta namn
+        until awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name' /proc/bus/input/devices >/dev/null 2>&1; do
+            echo "Waiting for controller (\$TARGET_DEV_NAME) to initialize..."
+            sleep 2
         done
+
+        # 2. Hämta event-numren för den kalibrerade kontrollen
+        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=1} \$0 ~ name {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        
+        # Fallback: Om den kalibrerade kontrollen mot förmodan inte gav några event-nummer, sök efter generiska nyckelord
+        if [ -z "\$EVENT_NUMS" ]; then
+            EVENT_NUMS=\$(awk 'BEGIN{IGNORECASE=1} \$0 ~ /xbox|pad|controller|joystick/ {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        fi
+
+        # 3. Vänta aktivt tills udev har skapat de fysiska filerna och gjort dem läsbara
+        for NUM in \$EVENT_NUMS; do
+            until [ -r "/dev/input/event\$NUM" ]; do
+                echo "Waiting for /dev/input/event\$NUM to become readable..."
+                sleep 0.2
+            done
+        done
+
+        echo "Controller files are ready and readable! Initializing listeners..."
 
         # Store the process IDs of our background listeners
         LISTENER_PIDS=""
