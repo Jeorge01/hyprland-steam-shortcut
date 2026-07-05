@@ -179,16 +179,32 @@ if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
     while true; do
-        # 1. Vänta: Loopa tills udev registrerar en enhet som börjar med ditt kalibrerade namn
-        until awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index(\$0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
-            echo "Waiting for your specific controller (\$TARGET_DEV_NAME) to initialize..."
+        while true; do
+            CHECK_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" '
+                BEGIN { RS="\n\n|--\n"; IGNORECASE=1 }
+                \$0 ~ "N: Name=\"" name "\"" && \$0 ~ "P: Phys=.+" {
+                    if (match(\$0, /Handlers=[^\n]+/)) {
+                        handlers = substr(\$0, RSTART, RLENGTH);
+                        split(handlers, arr, " ");
+                        for (i in arr) {
+                            if (arr[i] ~ /event/) {
+                                gsub(/[^0-9]/, "", arr[i]);
+                                print arr[i];
+                            }
+                        }
+                    }
+                }
+            ' /proc/bus/input/devices)
+
+            if [ -n "\$CHECK_NUMS" ]; then
+                EVENT_NUMS="\$CHECK_NUMS"
+                break
+            fi
+
+            echo "Waiting for your specific physical controller (\$TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
-
-        # 2. Hämta event-numren för alla enheter som matchar prefixet
-        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index(\$0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
         
-        # 3. Vänta tills udev har gjort filerna läsbara
         for NUM in \$EVENT_NUMS; do
             until [ -r "/dev/input/event\$NUM" ]; do
                 echo "Waiting for /dev/input/event\$NUM to become readable..."
@@ -200,7 +216,6 @@ if [ "\$1" == "listen" ]; then
 
         LISTENER_PIDS=""
 
-        # Starta lyssnare på alla matchande event-noder
         for NUM in \$EVENT_NUMS; do
             if [ -e "/dev/input/event\$NUM" ]; then
                 echo "Listening on /dev/input/event\$NUM"
@@ -215,7 +230,6 @@ if [ "\$1" == "listen" ]; then
             fi
         done
 
-        # Övervaka så att kontrollerna inte kopplas ur
         while [ -n "\$LISTENER_PIDS" ]; do
             sleep 10
             ANY_ALIVE=0
