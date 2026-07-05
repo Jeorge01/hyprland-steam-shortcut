@@ -313,10 +313,10 @@ if [ "\$1" == "trigger" ]; then
 
     if [ -n "\$PID_LIST" ]; then
         echo "Status: Triggering Big Picture..."
-        systemd-run --user --machine="\text{\$}USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1
+        systemd-run --user --machine="\$USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1
     else
         echo "Status: Launching Big Picture from scratch..."
-        systemd-run --user --machine="\text{\$}USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" steam -bigpicture >/dev/null 2>&1
+        systemd-run --user --machine="\$USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" steam -bigpicture >/dev/null 2>&1
     fi
     echo "=== TRIGGER COMPLETE ==="
     echo "========================================="
