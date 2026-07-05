@@ -148,16 +148,32 @@ if [ "$1" == "listen" ]; then
     echo "Starting listener..."
 
     while true; do
-        # 1. Dynamic wait: Loop until udev registers a device starting with your calibrated name
-        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
-            echo "Waiting for controller ($TARGET_DEV_NAME) to initialize..."
+        while true; do
+            CHECK_NUMS=$(awk -v name="$TARGET_DEV_NAME" '
+                BEGIN { RS="\n\n|--\n"; IGNORECASE=1 }
+                $0 ~ "N: Name=\"" name "\"" && $0 ~ "P: Phys=.+" {
+                    if (match($0, /Handlers=[^\n]+/)) {
+                        handlers = substr($0, RSTART, RLENGTH);
+                        split(handlers, arr, " ");
+                        for (i in arr) {
+                            if (arr[i] ~ /event/) {
+                                gsub(/[^0-9]/, "", arr[i]);
+                                print arr[i];
+                            }
+                        }
+                    }
+                }
+            ' /proc/bus/input/devices)
+
+            if [ -n "$CHECK_NUMS" ]; then
+                EVENT_NUMS="$CHECK_NUMS"
+                break
+            fi
+
+            echo "Waiting for your specific physical controller ($TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
-
-        # 2. Extract event numbers for all matching controllers (handles suffixes like pad 0, pad 1)
-        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-
-        # 3. Actively wait until udev creates the physical files and applies permissions
+        
         for NUM in $EVENT_NUMS; do
             until [ -r "/dev/input/event$NUM" ]; do
                 echo "Waiting for /dev/input/event$NUM to become readable..."
@@ -165,12 +181,10 @@ if [ "$1" == "listen" ]; then
             done
         done
 
-        echo "Controller files are ready and readable! Initializing listeners..."
+        echo "Your calibrated controller is ready! Initializing listener..."
 
-        # Store the process IDs of our background listeners
         LISTENER_PIDS=""
 
-        # Start a background listener for EACH matching event node
         for NUM in $EVENT_NUMS; do
             if [ -e "/dev/input/event$NUM" ]; then
                 echo "Listening on /dev/input/event$NUM"
@@ -185,8 +199,6 @@ if [ "$1" == "listen" ]; then
             fi
         done
 
-        # Monitor loop: Check if our exact spawned background listeners are actually alive
-        # If the controller disconnects, this loop breaks to re-scan hardware
         while [ -n "$LISTENER_PIDS" ]; do
             sleep 10
             ANY_ALIVE=0
@@ -197,7 +209,7 @@ if [ "$1" == "listen" ]; then
             done
             
             if [ $ANY_ALIVE -eq 0 ]; then
-                echo "⚠️ All background listeners disconnected. Re-scanning hardware..."
+                echo "⚠️ Controller disconnected. Re-scanning hardware..."
                 break
             fi
         done
@@ -213,7 +225,6 @@ if [ "$1" == "trigger" ]; then
     echo "Timestamp: $(date)"
     echo "-----------------------------------------"
 
-    # Dynamically sniff the active Wayland/Hyprland session env from process memory
     HYPR_PID=$(pgrep -u "$USER_NAME" -x Hyprland | head -n 1)
     if [ -z "$HYPR_PID" ]; then
         HYPR_PID=$(pgrep -u "$USER_NAME" -f "wayland" | head -n 1)
@@ -224,7 +235,6 @@ if [ "$1" == "trigger" ]; then
         WAYLAND_VAR=$(grep -z '^WAYLAND_DISPLAY=' "/proc/$HYPR_PID/environ" | cut -d= -f2- | tr -d '\0')
     fi
 
-    # Fallbacks if session detection completely fails
     DISPLAY_VAR=${DISPLAY_VAR:-":1"}
     WAYLAND_VAR=${WAYLAND_VAR:-"wayland-1"}
 
