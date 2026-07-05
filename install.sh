@@ -256,29 +256,67 @@ if [ "\$1" == "trigger" ]; then
     echo "Timestamp: \$(date)"
     echo "-----------------------------------------"
 
-    HYPR_PID=\$(pgrep -u "\$USER_NAME" -x Hyprland | head -n 1)
-    if [ -z "\$HYPR_PID" ]; then
-        HYPR_PID=\$(pgrep -u "\$USER_NAME" -f "wayland" | head -n 1)
+    HYPR_SIGNATURE=\$(pgrep -u "\$USER_NAME" -x Hyprland -a | grep -o 'HYPRLAND_INSTANCE_SIGNATURE=[^ ]*' | cut -d= -f2- | head -n1)
+    if [ -z "\$HYPR_SIGNATURE" ]; then
+        HYPR_SIGNATURE=\$(ls -dt /run/user/\$USER_ID/hypr/* 2>/dev/null | head -n 1 | xargs basename 2>/dev/null)
     fi
 
-    if [ -n "\$HYPR_PID" ]; then
-        DISPLAY_VAR=\$(grep -z '^DISPLAY=' "/proc/\$HYPR_PID/environ" | cut -d= -f2- | tr -d '\0')
-        WAYLAND_VAR=\$(grep -z '^WAYLAND_DISPLAY=' "/proc/\$HYPR_PID/environ" | cut -d= -f2- | tr -d '\0')
-    fi
-
-    DISPLAY_VAR=\${DISPLAY_VAR:-":1"}
-    WAYLAND_VAR=\${WAYLAND_VAR:-"wayland-1"}
-
-    echo "Resolved display context: DISPLAY=\$DISPLAY_VAR | WAYLAND_DISPLAY=\$WAYLAND_VAR"
+    CURRENT_ACTIVE_WS=\$(runuser -u "\$USER_NAME" -- env HYPRLAND_INSTANCE_SIGNATURE="\$HYPR_SIGNATURE" XDG_RUNTIME_DIR="/run/user/\$USER_ID" hyprctl monitors | awk '/active workspace:/ {print \$3; exit}')
+    
+    TARGET_WORKSPACE=\${CURRENT_ACTIVE_WS:-"1"}
+    echo "Current active workspace in focus: \$TARGET_WORKSPACE"
 
     PID_LIST=\$(pgrep -u "\$USER_NAME" -x "steam")
 
     if [ -n "\$PID_LIST" ]; then
-        echo "Status: Steam is already running! Triggering Big Picture via XDG..."
-        systemd-run --user --machine="\${USER_NAME}@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1
+        echo "Steam is running. Searching for Steam window workspace..."
+        
+        STEAM_WS=\$(runuser -u "\$USER_NAME" -- env HYPRLAND_INSTANCE_SIGNATURE="\$HYPR_SIGNATURE" XDG_RUNTIME_DIR="/run/user/\$USER_ID" hyprctl clients | awk '
+            /^Window/ { 
+                if (is_steam && ws != "") { last_steam_ws = ws }
+                is_steam = 0
+                ws = ""
+            }
+            /class: [Ss]team/ || /initialClass: [Ss]team/ { 
+                is_steam = 1 
+            }
+            /workspace: / {
+                line = \$0
+                gsub(/[^0-9]/, " ", line)
+                split(line, numbers, " ")
+                
+                for (i = 1; i <= length(numbers); i++) {
+                    if (numbers[i] != "") {
+                        ws = numbers[i]
+                    }
+                }
+            }
+            END { 
+                if (is_steam && ws != "") { last_steam_ws = ws }
+                print last_steam_ws 
+            }
+        ')
+        
+        if [ -n "\$STEAM_WS" ] && [ "\$STEAM_WS" -eq "\$STEAM_WS" ] 2>/dev/null; then
+            TARGET_WORKSPACE="\$STEAM_WS"
+            echo "Found Steam on Workspace: \$TARGET_WORKSPACE"
+        else
+            echo "Steam is running but no open window found yet. Staying on current workspace."
+        fi
     else
-        echo "Status: Steam is not running. Launching Big Picture Mode from scratch..."
-        systemd-run --user --machine="\${USER_NAME}@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" steam -bigpicture >/dev/null 2>&1
+        echo "Steam is not running. It will be launched on the current workspace (\$TARGET_WORKSPACE)."
+    fi
+
+    echo "Forcing focus to Hyprland Workspace \$TARGET_WORKSPACE via hyprctl eval..."
+    HYPR_ERR=\$(runuser -u "\$USER_NAME" -- env HYPRLAND_INSTANCE_SIGNATURE="\$HYPR_SIGNATURE" XDG_RUNTIME_DIR="/run/user/\$USER_ID" hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \$TARGET_WORKSPACE }))" 2>&1)
+    echo "Hyprctl eval output: \${HYPR_ERR:-"Success"}"
+
+    if [ -n "\$PID_LIST" ]; then
+        echo "Status: Triggering Big Picture..."
+        systemd-run --user --machine="\text{\$}USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1
+    else
+        echo "Status: Launching Big Picture from scratch..."
+        systemd-run --user --machine="\text{\$}USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" steam -bigpicture >/dev/null 2>&1
     fi
     echo "=== TRIGGER COMPLETE ==="
     echo "========================================="
