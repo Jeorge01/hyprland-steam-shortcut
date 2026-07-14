@@ -20,7 +20,7 @@ sudo -v || exit 1
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
 # -------------------------------------------------------------------------
-# STEP 1: PRE-FLIGHT CHECKS (FAIL-FAST)
+# STEP 1: PRE-FLIGHT CHECKS & DISTRO DETECTION (FAIL-FAST)
 # -------------------------------------------------------------------------
 
 if [ "$(id -u)" = "0" ]; then
@@ -29,11 +29,20 @@ if [ "$(id -u)" = "0" ]; then
     exit 1
 fi
 
-if ! command -v pacman &> /dev/null; then
-    echo -e "${RED}❌ This script is designed for Arch Linux (uses pacman).${CLEAR}"
-    echo -e "${RED}   Your distribution is currently not supported automatically.${CLEAR}"
+# Detect Package Manager
+if command -v pacman &> /dev/null; then
+    DISTRO="Arch"
+    PKG_MANAGER="pacman"
+elif command -v dnf &> /dev/null; then
+    DISTRO="Fedora"
+    PKG_MANAGER="dnf"
+else
+    echo -e "${RED}❌ Unsupported distribution.${CLEAR}"
+    echo -e "${RED}   This script currently only supports Arch Linux (pacman) and Fedora (dnf).${CLEAR}"
     exit 1
 fi
+
+echo -e "💻 Detected OS environment: ${CYAN}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
 
 # -------------------------------------------------------------------------
 # STEP 2: DEPENDENCIES & DRIVERS
@@ -42,8 +51,12 @@ fi
 if command -v evtest &> /dev/null; then
     echo "📦 evtest is already installed, skipping..."
 else
-    echo "📦 evtest is missing. Installing via pacman..."
-    sudo pacman -S --needed --noconfirm evtest
+    echo "📦 evtest is missing. Installing via $PKG_MANAGER..."
+    if [ "$PKG_MANAGER" = "pacman" ]; then
+        sudo pacman -S --needed --noconfirm evtest
+    elif [ "$PKG_MANAGER" = "dnf" ]; then
+        sudo dnf install -y evtest
+    fi
 fi
 
 echo "⚙️ Configuring xpad driver..."
@@ -69,18 +82,18 @@ USER_ID=$(id -u)
 DISPLAY_VAR=${DISPLAY:-":0"}
 WAYLAND_VAR=${WAYLAND_DISPLAY:-"wayland-0"}
 
-echo "   Detected values:"
-echo "    - User:    $USER_NAME (UID: $USER_ID)"
-echo "    - Display: $DISPLAY_VAR"
-echo "    - Wayland: $WAYLAND_VAR"
+echo "    Detected values:"
+echo "     - User:    $USER_NAME (UID: $USER_ID)"
+echo "     - Display: $DISPLAY_VAR"
+echo "     - Wayland: $WAYLAND_VAR"
 echo "-----------------------------------------"
 
 # -------------------------------------------------------------------------
 # LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
 echo -e "${BLUE}🎮 CONTROLLER CALIBRATION READY${CLEAR}"
-echo -e "   Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
-echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
+echo -e "    Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
+echo -e "    Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
 echo -e -n "👉 Press ${GREEN}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
 read -r </dev/tty
@@ -143,9 +156,9 @@ else
 
     echo ""
     echo -e "-----------------------------------------"
-    echo -e "   ${GREEN}Button press detected!${CLEAR}"
-    echo -e "   ${GREEN}Detected Device:${CLEAR} ${TARGET_DEV_NAME}"
-    echo -e "   ${GREEN}Mapped Button:${CLEAR}   ${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})"
+    echo -e "    ${GREEN}Button press detected!${CLEAR}"
+    echo -e "    ${GREEN}Detected Device:${CLEAR} ${TARGET_DEV_NAME}"
+    echo -e "    ${GREEN}Mapped Button:${CLEAR}   ${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})"
 fi
 echo "-----------------------------------------"
 
@@ -351,4 +364,18 @@ echo "-----------------------------------------"
 echo -e "${GREEN}✅ Installation/Update complete!${CLEAR}"
 echo "   Your controller is mapped dynamically."
 echo "   If it doesn't work, check the log: cat ~/steam_error.log"
+
+# -------------------------------------------------------------------------
+# FEDORA SPECIFIC NOTE (SELinux warnings)
+# -------------------------------------------------------------------------
+if [ "$DISTRO" = "Fedora" ]; then
+    echo -e ""
+    echo -e "${YELLOW}⚠️  Fedora / SELinux Notice:${CLEAR}"
+    echo -e "   Since you are running Fedora, SELinux is active by default."
+    echo -e "   The systemd service runs as 'root' but spawns a process in your user session."
+    echo -e "   If the shortcut does not trigger Steam, check if SELinux blocked it:"
+    echo -e "   Run 'sudo setenforce 0' to temporarily disable SELinux. If that fixes it,"
+    echo -e "   consider running the service as a systemd --user service instead."
+fi
+
 echo "========================================="

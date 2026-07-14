@@ -9,7 +9,7 @@ Automated background service that maps any designated controller button to launc
 You can install or update the shortcut trigger automatically using the following command.
 
 ### One-line Installer (Recommended)
-Open your terminal and run:
+Open your terminal and run (works on both Arch Linux and Fedora):
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash
@@ -32,13 +32,21 @@ chmod +x install.sh
 ### 1. Prerequisites & Installation
 
 To capture controller inputs globally (even when no window is focused) and bypass Wayland's strict security layers, we need an input testing utility and a background system service.
-Install the following package using your package manager (e.g., `pacman` on Arch Linux):
+Install the necessary utility depending on your distribution:
 
 ```bash
 # 1. xpad - Standard Xbox controller driver (usually built into the kernel, make sure it's not blacklisted)
 # 2. evtest - Utility to monitor input events and find button names
+```
 
+### On Arch:
+```bash
 sudo pacman -S evtest
+```
+
+### On Fedora:
+```bash
+sudo dnf install evtest
 ```
 ### ⚠️ Crucial: Ensure the xpad Driver is Loaded
 
@@ -58,7 +66,7 @@ sudo modprobe xpad
 If this command returns no output, it means the driver is not currently active.
 
 #### 3. Ensure the driver loads automatically on boot:
-To prevent having to do this manually every time you restart your system, create a configuration file that tells Arch to always load xpad at startup:
+To prevent having to do this manually every time you restart your system, create a configuration file that tells your system to always load xpad at startup:
 ```bash
 echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf
 ```
@@ -319,6 +327,19 @@ To check if the service successfully located your controller and is actively run
 ```bash
 sudo systemctl status xbox-steam.service
 ```
+
+### Fedora-Specific (SELinux Blocks)
+Fedora runs SELinux in Enforcing mode by default. Since this systemd service runs as root (system) but tries to launch processes inside your user graphical session, SELinux may block it.
+
+1. Test if SELinux is the culprit by temporarily put SELinux in permissive mode:
+
+```bash
+sudo setenforce 0
+```
+If the controller button suddenly starts opening Steam perfectly, SELinux was indeed blocking it.
+
+2. How to handle it permanently:
+You can either leave SELinux in enforcing mode and generate a custom policy module, or rewrite the systemd service to run as a systemd user service (systemctl --user).
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
