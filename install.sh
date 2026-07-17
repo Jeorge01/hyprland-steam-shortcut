@@ -3,19 +3,36 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+
+HYPR_BLUE="\033[38;2;94;204;227m"
+HYPR_LIGHT_BLUE="\033[38;2;175;230;241m"
+HYPR_DARK_BLUE="\033[38;2;85;184;204m"
+HYPR_DARKEST_BLUE="\033[38;2;72;162;180m"
+
 GREEN='\033[38;2;40;180;99m'
 YELLOW='\033[38;2;244;208;63m'
 RED='\033[38;2;231;76;60m'
 BLUE='\033[38;2;52;152;219m'
 CYAN='\033[38;2;26;188;156m'
+WHITE='\033[1;37m'
 CLEAR='\033[0m'
 
 echo -e ""
-echo -e "${GREEN}=========================================${CLEAR}"
-echo -e "${GREEN}  Hyprland Steam Shortcut Install script${CLEAR}"
-echo -e "${GREEN}=========================================${CLEAR}"
+echo -e "${HYPR_BLUE}"
+
+printf "%b" "$(cat << EOF
+▖▖  ${HYPR_DARK_BLUE}    ▜ ${HYPR_DARKEST_BLUE}     ▌${HYPR_BLUE}  ▄▖▗ ${HYPR_DARK_BLUE}    ${HYPR_DARKEST_BLUE}   ${HYPR_BLUE}  ▄▖▌ ${HYPR_DARK_BLUE}    ▗ ${HYPR_DARKEST_BLUE}    ▗ ${HYPR_BLUE}
+▙▌▌▌${HYPR_DARK_BLUE}▛▌▛▘▐ ${HYPR_DARKEST_BLUE}▀▌▛▌▛▌${HYPR_BLUE}  ▚ ▜▘${HYPR_DARK_BLUE}█▌▀▌${HYPR_DARKEST_BLUE}▛▛▌${HYPR_BLUE}  ▚ ▛▌${HYPR_DARK_BLUE}▛▌▛▘▜▘${HYPR_DARKEST_BLUE}▛▘▌▌▜▘${HYPR_BLUE}
+▌▌▙▌${HYPR_DARK_BLUE}▙▌▌ ▐▖${HYPR_DARKEST_BLUE}█▌▌▌▙▌${HYPR_BLUE}  ▄▌▐▖${HYPR_DARK_BLUE}▙▖█▌${HYPR_DARKEST_BLUE}▌▌▌${HYPR_BLUE}  ▄▌▌▌${HYPR_DARK_BLUE}▙▌▌ ▐▖${HYPR_DARKEST_BLUE}▙▖▙▌▐▖${HYPR_BLUE}
+  ▄▌${HYPR_DARK_BLUE}▌  ${HYPR_BLUE}In${HYPR_DARK_BLUE}st${HYPR_DARKEST_BLUE}all${HYPR_BLUE} scr${HYPR_DARK_BLUE}ipt${HYPR_BLUE}
+EOF
+)"
+
+echo -e "${CLEAR}"
+echo -e ""
 echo -e ""
 
+# r:0x42 g:0x95 b:0xca
 sudo -v || exit 1
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
