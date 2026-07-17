@@ -59,7 +59,7 @@ else
     exit 1
 fi
 
-echo -e "💻 Detected OS environment: ${CYAN}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
+echo -e "💻 Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
 
 # -------------------------------------------------------------------------
 # STEP 2: DEPENDENCIES & DRIVERS
@@ -108,11 +108,11 @@ echo "-----------------------------------------"
 # -------------------------------------------------------------------------
 # LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
-echo -e "${BLUE}🎮 CONTROLLER CALIBRATION READY${CLEAR}"
+echo -e "${HYPR_BLUE}🎮 CON${HYPR_DARK_BLUE}TRO${HYPR_DARKEST_BLUE}LLER${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
 echo -e "    Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
 echo -e "    Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
-echo -e -n "👉 Press ${GREEN}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
+echo -e -n "👉 Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
 read -r </dev/tty
 echo ""
 
