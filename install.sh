@@ -35,7 +35,14 @@ echo -e ""
 echo -e ""
 
 sudo -v || exit 1
-# while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+while true; do sudo -n true; sleep 10; kill -0 "$$" || exit; done 2>/dev/null &
+SUDO_KEEP_ALIVE_PID=$!
+
+cleanup() {
+    kill "$SUDO_KEEP_ALIVE_PID" 2>/dev/null || true
+}
+
+trap cleanup EXIT
 
 # -------------------------------------------------------------------------
 # STEP 1: PRE-FLIGHT CHECKS & DISTRO DETECTION (FAIL-FAST)
@@ -357,7 +364,7 @@ if [ "\$1" == "trigger" ]; then
 
     if [ -n "\$PID_LIST" ]; then
         echo "Status: Triggering Big Picture..."
-        xdg-open "steam://open/bigpicture" >/dev/null 2>&1
+        steam steam://open/bigpicture >/dev/null 2>&1 &
     else
         echo "Status: Launching Big Picture from scratch..."
         systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
