@@ -60,6 +60,12 @@ else
     exit 1
 fi
 
+if ! command -v steam &> /dev/null; then
+    echo -e "${RED}❌ ERROR: Steam is missing from your system.${CLEAR}"
+    echo -e "${RED}   Please install Steam first before running this installation script.${CLEAR}"
+    exit 1
+fi
+
 USER_NAME=$(id -un)
 USER_ID=$(id -u)
 
@@ -187,7 +193,6 @@ echo "────────────────────────�
 if systemctl --user is-active --quiet xbox-steam.service; then
     echo "  Existing service detected. Stopping safely before update..."
     systemctl --user stop xbox-steam.service
-    sudo pkill -x evtest || true
 fi
 
 echo "   Creating/Updating automation script (~/run_steam.sh)..."
@@ -365,7 +370,7 @@ EOF
 chmod +x "$HOME/run_steam.sh"
 
 if systemctl is-enabled xbox-steam.service &>/dev/null || [ -f /etc/systemd/system/xbox-steam.service ]; then
-    echo "🧹 Cleaning up the old global system service..."
+    echo "󰃢  Cleaning up the old global system service..."
     sudo systemctl disable --now xbox-steam.service 2>/dev/null || true
     sudo rm -f /etc/systemd/system/xbox-steam.service
     sudo systemctl daemon-reload
@@ -388,7 +393,6 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
-Restart=on-failure
 KillMode=process
 Restart=always
 RestartSec=5
