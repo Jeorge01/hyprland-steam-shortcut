@@ -19,12 +19,10 @@ CYAN='\033[38;2;26;188;156m'
 WHITE='\033[1;37m'
 CLEAR='\033[0m'
 
-# Formaterar rubriker snyggt (3 mellanslag)
 log_info() {
     echo "$1" | fmt -w 57 | sed 's/^/   /'
 }
 
-# Kör kommandon tyst, visar fel vid behov (6 mellanslag)
 run_cmd() {
     local output
     output=$("$@" 2>&1)
