@@ -178,7 +178,7 @@ else
     echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
     echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
 fi
-echo "-----------------------------------------"
+echo "─────────────────────────────────────────"
 
 ## -------------------------------------------------------------------------
 # STEP 3: CREATE FILES & ACTIVATE
@@ -283,7 +283,7 @@ if [ "\$1" == "trigger" ]; then
     echo "========================================="
     echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
     echo "Timestamp: \$(date)"
-    echo "-----------------------------------------"
+    echo "─────────────────────────────────────────"
 
     export WAYLAND_DISPLAY=\$(systemctl --user show-environment | grep '^WAYLAND_DISPLAY=' | cut -d= -f2)
     export DISPLAY=\$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
@@ -403,8 +403,7 @@ loginctl enable-linger "$USER_NAME"
 echo "   Starting service now..."
 systemctl --user restart xbox-steam.service
 
-echo "-----------------------------------------"
+echo "─────────────────────────────────────────"
 echo -e "${GREEN}✅ Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
 echo "   Your device is mapped dynamically."
 echo "   If it doesn't work, check the log: cat ~/steam_error.log"
-echo "========================================="
