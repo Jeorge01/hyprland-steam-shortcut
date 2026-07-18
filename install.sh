@@ -142,8 +142,8 @@ rm -f "$TMP_CAPTURE"
 if [ -z "$CAPTURED_LINE" ]; then
     echo ""
     echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
-    echo -e "${RED}│${CLEAR} ❌ ERROR: No controller input detected within 60s.              ${RED}│${CLEAR}"
-    echo -e "${RED}│${CLEAR}    Installation aborted. Please try again.                       ${RED}│${CLEAR}"
+    echo -e "${RED}│${CLEAR} ❌ ERROR: No input device activity detected within 60s.         ${RED}│${CLEAR}"
+    echo -e "${RED}│${CLEAR}    Installation aborted. Please try again.                      ${RED}│${CLEAR}"
     echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
     exit 1
 else
