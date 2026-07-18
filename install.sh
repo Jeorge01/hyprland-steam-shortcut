@@ -19,6 +19,22 @@ CYAN='\033[38;2;26;188;156m'
 WHITE='\033[1;37m'
 CLEAR='\033[0m'
 
+# Formaterar rubriker snyggt (3 mellanslag)
+log_info() {
+    echo "$1" | fmt -w 57 | sed 's/^/   /'
+}
+
+# Kör kommandon tyst, visar fel vid behov (6 mellanslag)
+run_cmd() {
+    local output
+    output=$("$@" 2>&1)
+    if [ $? -ne 0 ]; then
+        echo "$output" | fmt -w 54 | sed 's/^/      /'
+        return 1
+    fi
+    return 0
+}
+
 echo -e ""
 echo -e "${HYPR_BLUE}"
 
@@ -202,7 +218,7 @@ if systemctl --user is-active --quiet xbox-steam.service; then
     systemctl --user stop xbox-steam.service
 fi
 
-echo "   Creating/Updating automation script (~/run_steam.sh)..."
+log_info "Creating/Updating automation script (~/run_steam.sh)..."
 cat << EOF > "$HOME/run_steam.sh"
 #!/bin/bash
 
@@ -391,7 +407,7 @@ sudo chmod 440 "$SU_FILE"
 
 mkdir -p "$HOME/.config/systemd/user"
 
-echo "   Creating/Updating systemd user service (~/.config/systemd/user/xbox-steam.service)..."
+log_info "Creating/Updating systemd user service (~/.config/systemd/user/xbox-steam.service)..."
 cat << EOF > "$HOME/.config/systemd/user/xbox-steam.service"
 [Unit]
 Description=Steam Big Picture Trigger
@@ -410,19 +426,27 @@ RestartSec=5
 WantedBy=default.target
 EOF
 
-echo "   Reloading systemd configuration..."
-systemctl --user daemon-reload
+log_info "Reloading systemd configuration..."
+run_cmd systemctl --user daemon-reload
 
-echo "   Enabling service for automatic boot..."
-systemctl --user disable xbox-steam.service &>/dev/null || true
+log_info "Enabling service for automatic boot..."
+# Vi kör disable tyst, vi bryr oss inte om den lyckas eller misslyckas (om service inte finns t.ex.)
+systemctl --user disable xbox-steam.service &>/dev/null
 
-systemctl --user enable xbox-steam.service 2>&1 | sed 's/^/   /'
+if run_cmd systemctl --user enable xbox-steam.service; then
+    log_info "Service enabled successfully."
+fi
 
-echo "   Ensuring background execution via lingering..."
-loginctl enable-linger "$USER_NAME"
+log_info "Ensuring background execution via lingering..."
+if run_cmd loginctl enable-linger "$USER_NAME"; then
+    log_info "Lingering enabled for $USER_NAME."
+fi
 
-echo "   Starting service now..."
-systemctl --user restart xbox-steam.service
+log_info "Starting service now..."
+# Om restart misslyckas, visa felmeddelandet (via run_cmd)
+if ! run_cmd systemctl --user restart xbox-steam.service; then
+    log_info "[!] Failed to start service."
+fi
 
 echo "─────────────────────────────────────────"
 echo -e "${GREEN}  Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
