@@ -49,10 +49,10 @@ fi
 
 # Detect Package Manager
 if command -v pacman &> /dev/null; then
-    DISTRO="Arch"
+    DISTRO="󰣇 Arch"
     PKG_MANAGER="pacman"
 elif command -v dnf &> /dev/null; then
-    DISTRO="Fedora"
+    DISTRO=" Fedora"
     PKG_MANAGER="dnf"
 else
     echo -e "${RED}❌ Unsupported distribution.${CLEAR}"
@@ -63,16 +63,16 @@ fi
 USER_NAME=$(id -un)
 USER_ID=$(id -u)
 
-echo -e "💻 Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
+echo -e "󰌽  Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
 
 # -------------------------------------------------------------------------
 # STEP 2: DEPENDENCIES & DRIVERS
 # -------------------------------------------------------------------------
 
 if command -v evtest &> /dev/null; then
-    echo "📦 evtest is already installed, skipping..."
+    echo "  evtest is already installed, skipping..."
 else
-    echo "📦 evtest is missing. Installing via $PKG_MANAGER..."
+    echo "  evtest is missing. Installing via $PKG_MANAGER..."
     if [ "$PKG_MANAGER" = "pacman" ]; then
         sudo pacman -S --needed --noconfirm evtest
     elif [ "$PKG_MANAGER" = "dnf" ]; then
@@ -80,9 +80,9 @@ else
     fi
 fi
 
-echo "⚙️ Configuring xpad driver..."
+echo "  Configuring xpad driver..."
 if [ -f "/etc/modules-load.d/xpad.conf" ]; then
-    echo "⚙️ xpad is already configured for auto-load, skipping..."
+    echo "  xpad is already configured for auto-load, skipping..."
 else
     if ! lsmod | grep -q "xpad"; then
         echo "Loading xpad into the kernel..."
@@ -96,11 +96,11 @@ fi
 # LIVE BUTTON & DEVICE DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
 echo ""
-echo -e "${HYPR_BLUE}🎮 IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
+echo -e "${HYPR_BLUE}  IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
 echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
 echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
-echo -e -n "👉 Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
+echo -e -n "  Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
 read -r </dev/tty
 echo ""
 
@@ -159,17 +159,17 @@ else
         TARGET_DEV_NAME="Generic Controller"
     fi
 
-    RAW_L1=" ✅ Button press detected!"
-    RAW_L2=" 🎮 Detected Device: $TARGET_DEV_NAME"
-    RAW_L3=" 🔘 Mapped Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)"
+    RAW_L1="  Button press detected!"
+    RAW_L2="  Detected Device: $TARGET_DEV_NAME"
+    RAW_L3=" 󰪥 Mapped Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)"
 
     PAD_L1=$(echo "$RAW_L1" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
     PAD_L2=$(echo "$RAW_L2" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
     PAD_L3=$(echo "$RAW_L3" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
 
-    COLOR_L1="${HYPR_BLUE} ✅ Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE} pr${HYPR_DARK_BLUE}es${HYPR_DARKEST_BLUE}s${HYPR_BLUE} det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed!${CLEAR}${PAD_L1#*detected!}"
-    COLOR_L2="${HYPR_BLUE} 🎮 Det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} De${HYPR_DARK_BLUE}vi${HYPR_DARKEST_BLUE}ce${HYPR_BLUE}: ${CLEAR}${WHITE}${TARGET_DEV_NAME}${CLEAR}${PAD_L2#*Device: $TARGET_DEV_NAME}"
-    COLOR_L3="${HYPR_BLUE} 🔘 Ma${HYPR_DARK_BLUE}pp${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE}:   ${CLEAR}${WHITE}${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})${CLEAR}${PAD_L3#*Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)}"
+    COLOR_L1="${HYPR_BLUE}   Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE} pr${HYPR_DARK_BLUE}es${HYPR_DARKEST_BLUE}s${HYPR_BLUE} det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed!${CLEAR}${PAD_L1#*detected!}"
+    COLOR_L2="${HYPR_BLUE}   Det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} De${HYPR_DARK_BLUE}vi${HYPR_DARKEST_BLUE}ce${HYPR_BLUE}: ${CLEAR}${WHITE}${TARGET_DEV_NAME}${CLEAR}${PAD_L2#*Device: $TARGET_DEV_NAME}"
+    COLOR_L3="${HYPR_BLUE} 󰪥  Ma${HYPR_DARK_BLUE}pp${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE}:   ${CLEAR}${WHITE}${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})${CLEAR}${PAD_L3#*Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)}"
 
     echo ""
     echo -e "${HYPR_BLUE}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
@@ -185,7 +185,7 @@ echo "────────────────────────�
 # -------------------------------------------------------------------------
 
 if systemctl --user is-active --quiet xbox-steam.service; then
-    echo "🔄 Existing service detected. Stopping safely before update..."
+    echo "  Existing service detected. Stopping safely before update..."
     systemctl --user stop xbox-steam.service
     sudo pkill -x evtest || true
 fi
@@ -363,7 +363,7 @@ if systemctl is-enabled xbox-steam.service &>/dev/null || [ -f /etc/systemd/syst
     sudo systemctl daemon-reload
 fi
 
-echo "🔒 Adding sudoers rule for evtest..."
+echo "  Adding sudoers rule for evtest..."
 SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
 echo "$(id -un) ALL=(ALL) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
 sudo chmod 440 "$SU_FILE"
@@ -404,6 +404,6 @@ echo "   Starting service now..."
 systemctl --user restart xbox-steam.service
 
 echo "─────────────────────────────────────────"
-echo -e "${GREEN}✅ Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
+echo -e "${GREEN}  Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
 echo "   Your device is mapped dynamically."
 echo "   If it doesn't work, check the log: cat ~/steam_error.log"
