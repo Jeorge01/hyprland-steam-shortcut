@@ -5,11 +5,13 @@ set -e
 
 
 HYPR_BLUE="\033[38;2;94;204;227m"
-HYPR_LIGHT_BLUE="\033[38;2;175;230;241m"
 HYPR_DARK_BLUE="\033[38;2;85;184;204m"
 HYPR_DARKEST_BLUE="\033[38;2;72;162;180m"
 
-GREEN='\033[38;2;40;180;99m'
+GREEN="\033[38;2;94;227;149m"
+DARK_GREEN="\033[38;2;85;204;134m"
+DARKEST_GREEN="\033[38;2;72;180;117m"
+
 YELLOW='\033[38;2;244;208;63m'
 RED='\033[38;2;231;76;60m'
 BLUE='\033[38;2;52;152;219m'
@@ -388,7 +390,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now xbox-steam.service
 
 echo "-----------------------------------------"
-echo -e "${GREEN}✅ Installation/Update complete!${CLEAR}"
+echo -e "${GREEN}✅ Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
 echo "   Your device is mapped dynamically."
 echo "   If it doesn't work, check the log: cat ~/steam_error.log"
 echo "========================================="
