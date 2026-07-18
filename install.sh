@@ -3,7 +3,6 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-
 HYPR_BLUE="\033[38;2;94;204;227m"
 HYPR_DARK_BLUE="\033[38;2;85;184;204m"
 HYPR_DARKEST_BLUE="\033[38;2;72;162;180m"
@@ -428,7 +427,6 @@ log_info "Reloading systemd configuration..."
 run_cmd systemctl --user daemon-reload
 
 log_info "Enabling service for automatic boot..."
-# Vi kör disable tyst, vi bryr oss inte om den lyckas eller misslyckas (om service inte finns t.ex.)
 systemctl --user disable xbox-steam.service &>/dev/null
 
 if run_cmd systemctl --user enable xbox-steam.service; then
@@ -441,7 +439,6 @@ if run_cmd loginctl enable-linger "$USER_NAME"; then
 fi
 
 log_info "Starting service now..."
-# Om restart misslyckas, visa felmeddelandet (via run_cmd)
 if ! run_cmd systemctl --user restart xbox-steam.service; then
     log_info "[!] Failed to start service."
 fi
