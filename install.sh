@@ -32,9 +32,8 @@ echo -e "${CLEAR}"
 echo -e ""
 echo -e ""
 
-# r:0x42 g:0x95 b:0xca
 sudo -v || exit 1
-while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+# while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
 # -------------------------------------------------------------------------
 # STEP 1: PRE-FLIGHT CHECKS & DISTRO DETECTION (FAIL-FAST)
@@ -58,6 +57,9 @@ else
     echo -e "${RED}   This script currently only supports Arch Linux (pacman) and Fedora (dnf).${CLEAR}"
     exit 1
 fi
+
+USER_NAME=$(id -un)
+USER_ID=$(id -u)
 
 echo -e "💻 Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
 
@@ -89,28 +91,12 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# STEP 3: ENVIRONMENT VARIABLES
-# -------------------------------------------------------------------------
-echo "-----------------------------------------"
-echo "🔍 Detecting system variables..."
-
-USER_NAME=$(whoami)
-USER_ID=$(id -u)
-DISPLAY_VAR=${DISPLAY:-":0"}
-WAYLAND_VAR=${WAYLAND_DISPLAY:-"wayland-0"}
-
-echo "    Detected values:"
-echo "     - User:    $USER_NAME (UID: $USER_ID)"
-echo "     - Display: $DISPLAY_VAR"
-echo "     - Wayland: $WAYLAND_VAR"
-echo "-----------------------------------------"
-
-# -------------------------------------------------------------------------
 # LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
+echo ""
 echo -e "${HYPR_BLUE}🎮 CON${HYPR_DARK_BLUE}TRO${HYPR_DARKEST_BLUE}LLER${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
-echo -e "    Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
-echo -e "    Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
+echo -e "   Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
+echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
 echo -e -n "👉 Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
 read -r </dev/tty
@@ -180,24 +166,22 @@ fi
 echo "-----------------------------------------"
 
 ## -------------------------------------------------------------------------
-# STEP 4: CREATE FILES & ACTIVATE
+# STEP 3: CREATE FILES & ACTIVATE
 # -------------------------------------------------------------------------
 
-if systemctl is-active --quiet xbox-steam.service; then
+if systemctl --user is-active --quiet xbox-steam.service; then
     echo "🔄 Existing service detected. Stopping safely before update..."
-    sudo systemctl stop xbox-steam.service
+    systemctl --user stop xbox-steam.service
     sudo pkill -f evtest || true
 fi
 
 echo "   Creating/Updating automation script (~/run_steam.sh)..."
-cat << EOF > /home/$USER_NAME/run_steam.sh
+cat << EOF > "$HOME/run_steam.sh"
 #!/bin/bash
 
 # === CONFIGURATION (Auto-generated via Calibration) ===
 USER_NAME="$USER_NAME"
 USER_ID="$USER_ID"
-DISPLAY_VAR="$DISPLAY_VAR"
-WAYLAND_VAR="$WAYLAND_VAR"
 TARGET_DEV_NAME="$TARGET_DEV_NAME"
 TARGET_BTN_CODE="$TARGET_BTN_CODE"
 TARGET_BTN_NAME="$TARGET_BTN_NAME"
@@ -250,7 +234,7 @@ if [ "\$1" == "listen" ]; then
             if [ -e "/dev/input/event\$NUM" ]; then
                 echo "Listening on /dev/input/event\$NUM"
                 (
-                    evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
+                    sudo evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
                         if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
                             /bin/bash "\$SCRIPT_PATH" trigger &
                         fi
@@ -280,18 +264,18 @@ fi
 
 # --- TRIGGER EXECUTION ---
 if [ "\$1" == "trigger" ]; then
-    exec >> "/home/\$USER_NAME/steam_error.log" 2>&1
+    exec >> "$HOME/steam_error.log" 2>&1
     echo "========================================="
     echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
     echo "Timestamp: \$(date)"
     echo "-----------------------------------------"
 
-    HYPR_SIGNATURE=\$(pgrep -u "\$USER_NAME" -x Hyprland -a | grep -o 'HYPRLAND_INSTANCE_SIGNATURE=[^ ]*' | cut -d= -f2- | head -n1)
-    if [ -z "\$HYPR_SIGNATURE" ]; then
-        HYPR_SIGNATURE=\$(ls -dt /run/user/\$USER_ID/hypr/* 2>/dev/null | head -n 1 | xargs basename 2>/dev/null)
+    if [ -z "\$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+        export HYPRLAND_INSTANCE_SIGNATURE=\$(pgrep -u "\$USER_NAME" -x Hyprland -a | grep -o 'HYPRLAND_INSTANCE_SIGNATURE=[^ ]*' | cut -d= -f2- | head -n1)
+        export XDG_RUNTIME_DIR="/run/user/\$USER_ID"
     fi
 
-    CURRENT_ACTIVE_WS=\$(runuser -u "\$USER_NAME" -- env HYPRLAND_INSTANCE_SIGNATURE="\$HYPR_SIGNATURE" XDG_RUNTIME_DIR="/run/user/\$USER_ID" hyprctl monitors | awk '/active workspace:/ {print \$3; exit}')
+    CURRENT_ACTIVE_WS=\$(hyprctl monitors | awk '/active workspace:/ {print \$3; exit}')
     
     TARGET_WORKSPACE=\${CURRENT_ACTIVE_WS:-"1"}
     echo "Current active workspace in focus: \$TARGET_WORKSPACE"
@@ -301,7 +285,7 @@ if [ "\$1" == "trigger" ]; then
     if [ -n "\$PID_LIST" ]; then
         echo "Steam is running. Searching for Steam window workspace..."
         
-        STEAM_WS=\$(runuser -u "\$USER_NAME" -- env HYPRLAND_INSTANCE_SIGNATURE="\$HYPR_SIGNATURE" XDG_RUNTIME_DIR="/run/user/\$USER_ID" hyprctl clients | awk '
+        STEAM_WS=\$(hyprctl clients | awk '
             /^Window/ { 
                 if (is_steam && ws != "") { last_steam_ws = ws }
                 is_steam = 0
@@ -338,15 +322,15 @@ if [ "\$1" == "trigger" ]; then
     fi
 
     echo "Forcing focus to Hyprland Workspace \$TARGET_WORKSPACE via hyprctl eval..."
-    HYPR_ERR=\$(runuser -u "\$USER_NAME" -- env HYPRLAND_INSTANCE_SIGNATURE="\$HYPR_SIGNATURE" XDG_RUNTIME_DIR="/run/user/\$USER_ID" hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \$TARGET_WORKSPACE }))" 2>&1)
+    HYPR_ERR=\$(hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \$TARGET_WORKSPACE }))" 2>&1)
     echo "Hyprctl eval output: \${HYPR_ERR:-"Success"}"
 
     if [ -n "\$PID_LIST" ]; then
         echo "Status: Triggering Big Picture..."
-        systemd-run --user --machine="\$USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" dbus-run-session xdg-open "steam://open/bigpicture" >/dev/null 2>&1
+        xdg-open "steam://open/bigpicture" >/dev/null 2>&1
     else
         echo "Status: Launching Big Picture from scratch..."
-        systemd-run --user --machine="\$USER_NAME@.host" --collect env DISPLAY="\$DISPLAY_VAR" WAYLAND_DISPLAY="\$WAYLAND_VAR" XDG_RUNTIME_DIR="/run/user/\$USER_ID" steam -bigpicture >/dev/null 2>&1
+        steam -bigpicture >/dev/null 2>&1
     fi
     echo "=== TRIGGER COMPLETE ==="
     echo "========================================="
@@ -355,44 +339,42 @@ EOF
 
 chmod +x "$HOME/run_steam.sh"
 
-echo "   Creating/Updating systemd service (/etc/systemd/system/xbox-steam.service)..."
-cat << EOF | sudo tee /etc/systemd/system/xbox-steam.service > /dev/null
+if systemctl is-enabled xbox-steam.service &>/dev/null || [ -f /etc/systemd/system/xbox-steam.service ]; then
+    echo "🧹 Rensar bort den gamla globala system-tjänsten..."
+    sudo systemctl disable --now xbox-steam.service 2>/dev/null || true
+    sudo rm -f /etc/systemd/system/xbox-steam.service
+    sudo systemctl daemon-reload
+fi
+
+echo "🔒 Lägger till sudoers-regel för evtest..."
+SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
+echo "$(id -un) ALL=(ALL) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
+sudo chmod 440 "$SU_FILE"
+
+mkdir -p "$HOME/.config/systemd/user"
+
+echo "   Creating/Updating systemd user service (~/.config/systemd/user/xbox-steam.service)..."
+cat << EOF > "$HOME/.config/systemd/user/xbox-steam.service"
 [Unit]
 Description=Steam Big Picture Trigger
-After=systemd-udevd.service
+After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash /home/$USER_NAME/run_steam.sh listen
+ExecStart=/bin/bash $HOME/run_steam.sh listen
 Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=basic.target
+WantedBy=graphical-session.target
 EOF
 
-echo "   Reloading systemd and restarting service..."
-sudo systemctl daemon-reload
-sudo systemctl unmask xbox-steam.service
-sudo systemctl enable xbox-steam.service
-sudo systemctl restart xbox-steam.service
+echo "   Reloading systemd and restarting user service..."
+systemctl --user daemon-reload
+systemctl --user enable --now xbox-steam.service
 
 echo "-----------------------------------------"
 echo -e "${GREEN}✅ Installation/Update complete!${CLEAR}"
 echo "   Your controller is mapped dynamically."
 echo "   If it doesn't work, check the log: cat ~/steam_error.log"
-
-# -------------------------------------------------------------------------
-# FEDORA SPECIFIC NOTE (SELinux warnings)
-# -------------------------------------------------------------------------
-if [ "$DISTRO" = "Fedora" ]; then
-    echo -e ""
-    echo -e "${YELLOW}⚠️  Fedora / SELinux Notice:${CLEAR}"
-    echo -e "   Since you are running Fedora, SELinux is active by default."
-    echo -e "   The systemd service runs as 'root' but spawns a process in your user session."
-    echo -e "   If the shortcut does not trigger Steam, check if SELinux blocked it:"
-    echo -e "   Run 'sudo setenforce 0' to temporarily disable SELinux. If that fixes it,"
-    echo -e "   consider running the service as a systemd --user service instead."
-fi
-
 echo "========================================="
