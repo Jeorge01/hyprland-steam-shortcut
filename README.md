@@ -1,6 +1,6 @@
-# Hyprland Steam Shortcut (Controller Button Trigger)
+![Logo](assets/hss.svg)
 
-Automated background service that maps any designated controller button to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
+### Automated background service that maps any designated device input to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
 
 ---
 
@@ -31,7 +31,7 @@ chmod +x install.sh
 
 ### 1. Prerequisites & Installation
 
-To capture controller inputs globally (even when no window is focused) and bypass Wayland's strict security layers, we need an input testing utility and a background system service.
+To capture device inputs globally (even when no window is focused) and bypass Wayland's strict security layers, we need an input testing utility and a background system service.
 Install the necessary utility depending on your distribution:
 
 ```bash
@@ -87,8 +87,8 @@ Before writing the configuration, we must find out exactly what the system calls
 ```bash
 sudo evtest
 ```
-2. You will see a list of all available input devices. Locate your controller (e.g., Microsoft X-Box 360 pad or Flydigi), type its corresponding number, and press Enter.
-3. Press the designated button you wish to use as a shortcut on your controller (e.g., Xbox/Guide, Share, or a back paddle).
+2. You will see a list of all available input devices. Locate your device (e.g., Microsoft X-Box 360 pad or Flydigi), type its corresponding number, and press Enter.
+3. Press the designated button you wish to use as a shortcut on your device (e.g., Xbox/Guide, Share, or a back paddle).
 4. Look at the terminal output. Search for (EV_KEY) and the name inside the parentheses. For example:
 
 ```Plaintext
@@ -98,7 +98,7 @@ Event: time 1717968600.123456, type 1 (EV_KEY), code 316 (BTN_MODE), value 1
 
 ### 4. Create the Systemd Service
 
-Instead of using a desktop-level hotkey daemon (which Wayland often blocks), we create a lightweight systemd service that monitors the controller directly at the kernel layer using evtest.
+Instead of using a desktop-level hotkey daemon (which Wayland often blocks), we create a lightweight systemd service that monitors the device directly at the kernel layer using evtest.
 
 1. Create or open the file:
 ```bash
@@ -126,7 +126,7 @@ WantedBy=default.target
 ### 5. Create the Automation Script (run_steam.sh)
 
 This script does two things:
-1. When started by systemd, it dynamically finds the correct input event for the controller and listens for the button press.
+1. When started by systemd, it dynamically finds the correct input event for the device and listens for the button press.
 2. When the button is pressed, it safely bridges the command into your active graphical session (Wayland/Hyprland) with correct display variables.
 
 Create the script in your home directory:
@@ -140,7 +140,7 @@ nano ~/run_steam.sh
 #!/bin/bash
 
 # === CONFIGURATION ===
-# The name of your controller (or a unique keyword from its name)
+# The name of your device (or a unique keyword from its name)
 TARGET_DEV_NAME="Microsoft X-Box 360 pad"
 
 # The button code and name you want to trigger Steam (get this via evtest).
@@ -177,7 +177,7 @@ if [ "$1" == "listen" ]; then
                 break
             fi
 
-            echo "Waiting for your specific physical controller ($TARGET_DEV_NAME) to initialize..."
+            echo "Waiting for your specific physical device ($TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
         
