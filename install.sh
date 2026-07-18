@@ -172,7 +172,7 @@ echo "-----------------------------------------"
 if systemctl --user is-active --quiet xbox-steam.service; then
     echo "🔄 Existing service detected. Stopping safely before update..."
     systemctl --user stop xbox-steam.service
-    sudo pkill -f evtest || true
+    sudo pkill -x evtest || true
 fi
 
 echo "   Creating/Updating automation script (~/run_steam.sh)..."
@@ -330,7 +330,7 @@ if [ "\$1" == "trigger" ]; then
         xdg-open "steam://open/bigpicture" >/dev/null 2>&1
     else
         echo "Status: Launching Big Picture from scratch..."
-        steam -bigpicture >/dev/null 2>&1
+        nohup steam -bigpicture >/dev/null 2>&1 &
     fi
     echo "=== TRIGGER COMPLETE ==="
     echo "========================================="
@@ -362,6 +362,7 @@ After=graphical-session.target
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
+KillMode=process
 Restart=always
 RestartSec=3
 
