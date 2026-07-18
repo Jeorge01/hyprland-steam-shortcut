@@ -211,9 +211,22 @@ echo "────────────────────────�
 # -------------------------------------------------------------------------
 
 if systemctl --user is-active --quiet xbox-steam.service; then
-    echo "  Existing service detected. Stopping safely before update..."
-    systemctl --user stop xbox-steam.service
+    echo "  Existing service detected. Stopping safely..."
+    
+    # 1. Döda våra specifika processer FÖRST (innan systemd hinner radera filen)
+    if [ -f /tmp/xbox-steam-pids.txt ]; then
+        log_info "Killing existing listeners..."
+        xargs kill -9 < /tmp/xbox-steam-pids.txt 2>/dev/null
+        rm -f /tmp/xbox-steam-pids.txt
+    fi
+    
+    # 2. Stoppa tjänsten efteråt
+    systemctl --user stop xbox-steam.service &>/dev/null
 fi
+
+# 3. Säkerhetsåtgärd: Döda eventuella kvarvarande evtest som matchar vår sökning
+# Detta fångar "spök-bindningar" även om de tappat kontakten med PID-filen
+pkill -f "evtest" 2>/dev/null
 
 log_info "Creating/Updating automation script (~/run_steam.sh)..."
 cat << EOF > "$HOME/run_steam.sh"
@@ -268,6 +281,7 @@ if [ "\$1" == "listen" ]; then
 
         echo "Your calibrated device is ready! Initializing listener..."
 
+        echo "" > /tmp/xbox-steam-pids.txt
         LISTENER_PIDS=""
 
         for NUM in \$EVENT_NUMS; do
@@ -281,6 +295,7 @@ if [ "\$1" == "listen" ]; then
                     done
                 ) &
                 LISTENER_PIDS="\$LISTENER_PIDS \$!"
+                echo "\$LISTENER_PIDS" > /tmp/xbox-steam-pids.txt
             fi
         done
 
@@ -408,18 +423,17 @@ log_info "Creating/Updating systemd user service (~/.config/systemd/user/xbox-st
 cat << EOF > "$HOME/.config/systemd/user/xbox-steam.service"
 [Unit]
 Description=Steam Big Picture Trigger
-# After=graphical-session.target
 After=default.target
 
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
+ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "$pid_file" ]; then xargs kill -9 < "$pid_file" 2>/dev/null; rm -f "$pid_file"; fi'
 KillMode=process
 Restart=always
 RestartSec=5
 
 [Install]
-# WantedBy=graphical-session.target
 WantedBy=default.target
 EOF
 
