@@ -394,7 +394,8 @@ systemctl --user daemon-reload
 
 echo "   Enabling service for automatic boot..."
 systemctl --user disable xbox-steam.service &>/dev/null || true
-systemctl --user enable xbox-steam.service
+
+systemctl --user enable xbox-steam.service 2>&1 | sed 's/^/   /'
 
 echo "   Ensuring background execution via lingering..."
 loginctl enable-linger "$USER_NAME"
