@@ -285,13 +285,27 @@ if [ "\$1" == "trigger" ]; then
     echo "Timestamp: \$(date)"
     echo "-----------------------------------------"
 
-    if [ -z "\$HYPRLAND_INSTANCE_SIGNATURE" ]; then
-        export HYPRLAND_INSTANCE_SIGNATURE=\$(pgrep -u "\$USER_NAME" -x Hyprland -a | grep -o 'HYPRLAND_INSTANCE_SIGNATURE=[^ ]*' | cut -d= -f2- | head -n1)
-        export XDG_RUNTIME_DIR="/run/user/\$USER_ID"
+    export WAYLAND_DISPLAY=\$(systemctl --user show-environment | grep '^WAYLAND_DISPLAY=' | cut -d= -f2)
+    export DISPLAY=\$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
+    export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
+
+    # 2. Om systemd saknar Wayland-variabeln (dvs. startade för tidigt), leta upp den grafiska sessionen manuellt
+    if [ -z "\$WAYLAND_DISPLAY" ]; then
+        # Hitta PID för det aktiva gränssnittet (stöder Hyprland, Sway, Wayfire etc.)
+        COMPOSITOR_PID=\$(pgrep -u "\$USER" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
+        
+        if [ -n "\$COMPOSITOR_PID" ]; then
+            export WAYLAND_DISPLAY=\$(grep -z '^WAYLAND_DISPLAY=' /proc/\$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
+            export DISPLAY=\$(grep -z '^DISPLAY=' /proc/\$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
+            export HYPRLAND_INSTANCE_SIGNATURE=\$(grep -z '^HYPRLAND_INSTANCE_SIGNATURE=' /proc/\$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
+        fi
     fi
 
+    # Dubbelkolla att vi faktiskt har en display nu, annars sätter vi standard-fallbacks
+    [ -z "$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY="wayland-0"
+    [ -z "$DISPLAY" ] && export DISPLAY=":0"
+
     CURRENT_ACTIVE_WS=\$(hyprctl monitors | awk '/active workspace:/ {print \$3; exit}')
-    
     TARGET_WORKSPACE=\${CURRENT_ACTIVE_WS:-"1"}
     echo "Current active workspace in focus: \$TARGET_WORKSPACE"
 
@@ -306,23 +320,11 @@ if [ "\$1" == "trigger" ]; then
                 is_steam = 0
                 ws = ""
             }
-            /class: [Ss]team/ || /initialClass: [Ss]team/ { 
-                is_steam = 1 
-            }
-            /workspace: / {
-                line = \$0
-                gsub(/[^0-9]/, " ", line)
-                split(line, numbers, " ")
-                
-                for (i = 1; i <= length(numbers); i++) {
-                    if (numbers[i] != "") {
-                        ws = numbers[i]
-                    }
-                }
-            }
+            /workspace:/ { ws = \$2 }
+            /class: [Ss]team/ { is_steam = 1 }
             END { 
                 if (is_steam && ws != "") { last_steam_ws = ws }
-                print last_steam_ws 
+                print (last_steam_ws != "") ? last_steam_ws : "unknown"
             }
         ')
         
@@ -345,7 +347,7 @@ if [ "\$1" == "trigger" ]; then
         xdg-open "steam://open/bigpicture" >/dev/null 2>&1
     else
         echo "Status: Launching Big Picture from scratch..."
-        nohup steam -bigpicture >/dev/null 2>&1 &
+        systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
     fi
     echo "=== TRIGGER COMPLETE ==="
     echo "========================================="
@@ -372,22 +374,33 @@ echo "   Creating/Updating systemd user service (~/.config/systemd/user/xbox-ste
 cat << EOF > "$HOME/.config/systemd/user/xbox-steam.service"
 [Unit]
 Description=Steam Big Picture Trigger
-After=graphical-session.target
+# After=graphical-session.target
+After=default.target
 
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
 KillMode=process
 Restart=always
-RestartSec=3
+RestartSec=5
 
 [Install]
-WantedBy=graphical-session.target
+# WantedBy=graphical-session.target
+WantedBy=default.target
 EOF
 
-echo "   Reloading systemd and restarting user service..."
+echo "   Reloading systemd configuration..."
 systemctl --user daemon-reload
-systemctl --user enable --now xbox-steam.service
+
+echo "   Enabling service for automatic boot..."
+systemctl --user disable xbox-steam.service &>/dev/null || true
+systemctl --user enable xbox-steam.service
+
+echo "   Ensuring background execution via lingering..."
+loginctl enable-linger "$USER_NAME"
+
+echo "   Starting service now..."
+systemctl --user restart xbox-steam.service
 
 echo "-----------------------------------------"
 echo -e "${GREEN}✅ Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
