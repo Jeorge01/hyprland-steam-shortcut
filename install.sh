@@ -358,9 +358,10 @@ if [ "\$1" == "trigger" ]; then
         echo "Steam is not running. It will be launched on the current workspace (\$TARGET_WORKSPACE)."
     fi
 
-    echo "Forcing focus to Hyprland Workspace \$TARGET_WORKSPACE via hyprctl eval..."
-    HYPR_ERR=\$(hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \$TARGET_WORKSPACE }))" 2>&1)
-    echo "Hyprctl eval output: \${HYPR_ERR:-"Success"}"
+    echo "Forcing focus to Hyprland Workspace \$TARGET_WORKSPACE via modern Lua eval..."
+    hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \$TARGET_WORKSPACE }))"
+    hyprctl eval "hl.dispatch(hl.dsp.window.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
+    hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" 2>/dev/null || true
 
     if [ -n "\$PID_LIST" ]; then
         echo "Status: Triggering Big Picture..."
