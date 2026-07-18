@@ -91,11 +91,11 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# LIVE BUTTON & CONTROLLER DETECTION (60s timeout & graceful abort)
+# LIVE BUTTON & DEVICE DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
 echo ""
-echo -e "${HYPR_BLUE}🎮 CON${HYPR_DARK_BLUE}TRO${HYPR_DARKEST_BLUE}LLER${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
-echo -e "   Before we begin, make sure your controller is turned ${GREEN}ON${CLEAR} and connected."
+echo -e "${HYPR_BLUE}🎮 IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
+echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
 echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
 echo ""
 echo -e -n "👉 Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
@@ -141,10 +141,10 @@ rm -f "$TMP_CAPTURE"
 
 if [ -z "$CAPTURED_LINE" ]; then
     echo ""
-    echo "-----------------------------------------"
-    echo -e "${RED}❌ ERROR: No controller input detected within 60 seconds.${CLEAR}"
-    echo -e "${RED}   Installation aborted. Please ensure your controller is active and try again.${CLEAR}"
-    echo "-----------------------------------------"
+    echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+    echo -e "${RED}│${CLEAR} ❌ ERROR: No controller input detected within 60s.              ${RED}│${CLEAR}"
+    echo -e "${RED}│${CLEAR}    Installation aborted. Please try again.                       ${RED}│${CLEAR}"
+    echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
     exit 1
 else
     # Parse out the event path, button code, and name
@@ -157,11 +157,24 @@ else
         TARGET_DEV_NAME="Generic Controller"
     fi
 
+    RAW_L1=" ✅ Button press detected!"
+    RAW_L2=" 🎮 Detected Device: $TARGET_DEV_NAME"
+    RAW_L3=" 🔘 Mapped Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)"
+
+    PAD_L1=$(echo "$RAW_L1" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
+    PAD_L2=$(echo "$RAW_L2" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
+    PAD_L3=$(echo "$RAW_L3" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
+
+    COLOR_L1="${HYPR_BLUE} ✅ Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE} pr${HYPR_DARK_BLUE}es${HYPR_DARKEST_BLUE}s${HYPR_BLUE} det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed!${CLEAR}${PAD_L1#*detected!}"
+    COLOR_L2="${HYPR_BLUE} 🎮 Det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} De${HYPR_DARK_BLUE}vi${HYPR_DARKEST_BLUE}ce${HYPR_BLUE}: ${CLEAR}${WHITE}${TARGET_DEV_NAME}${CLEAR}${PAD_L2#*Device: $TARGET_DEV_NAME}"
+    COLOR_L3="${HYPR_BLUE} 🔘 Ma${HYPR_DARK_BLUE}pp${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE}:   ${CLEAR}${WHITE}${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})${CLEAR}${PAD_L3#*Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)}"
+
     echo ""
-    echo -e "-----------------------------------------"
-    echo -e "    ${GREEN}Button press detected!${CLEAR}"
-    echo -e "    ${GREEN}Detected Device:${CLEAR} ${TARGET_DEV_NAME}"
-    echo -e "    ${GREEN}Mapped Button:${CLEAR}   ${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})"
+    echo -e "${HYPR_BLUE}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+    echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L1}${HYPR_BLUE}  │${CLEAR}"
+    echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L2}${HYPR_BLUE}  │${CLEAR}"
+    echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
+    echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
 fi
 echo "-----------------------------------------"
 
@@ -226,7 +239,7 @@ if [ "\$1" == "listen" ]; then
             done
         done
 
-        echo "Your calibrated controller is ready! Initializing listener..."
+        echo "Your calibrated device is ready! Initializing listener..."
 
         LISTENER_PIDS=""
 
@@ -254,7 +267,7 @@ if [ "\$1" == "listen" ]; then
             done
             
             if [ \$ANY_ALIVE -eq 0 ]; then
-                echo "⚠️ Controller disconnected. Re-scanning hardware..."
+                echo "⚠️ Device disconnected. Re-scanning hardware..."
                 break
             fi
         done
@@ -340,13 +353,13 @@ EOF
 chmod +x "$HOME/run_steam.sh"
 
 if systemctl is-enabled xbox-steam.service &>/dev/null || [ -f /etc/systemd/system/xbox-steam.service ]; then
-    echo "🧹 Rensar bort den gamla globala system-tjänsten..."
+    echo "🧹 Cleaning up the old global system service..."
     sudo systemctl disable --now xbox-steam.service 2>/dev/null || true
     sudo rm -f /etc/systemd/system/xbox-steam.service
     sudo systemctl daemon-reload
 fi
 
-echo "🔒 Lägger till sudoers-regel för evtest..."
+echo "🔒 Adding sudoers rule for evtest..."
 SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
 echo "$(id -un) ALL=(ALL) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
 sudo chmod 440 "$SU_FILE"
@@ -376,6 +389,6 @@ systemctl --user enable --now xbox-steam.service
 
 echo "-----------------------------------------"
 echo -e "${GREEN}✅ Installation/Update complete!${CLEAR}"
-echo "   Your controller is mapped dynamically."
+echo "   Your device is mapped dynamically."
 echo "   If it doesn't work, check the log: cat ~/steam_error.log"
 echo "========================================="
