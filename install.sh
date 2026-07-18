@@ -259,17 +259,25 @@ if [ "\$1" == "listen" ]; then
             fi
         done
 
-        while [ -n "\$LISTENER_PIDS" ]; do
-            sleep 10
-            ANY_ALIVE=0
-            for pid in \$LISTENER_PIDS; do
-                if kill -0 \$pid 2>/dev/null; then
-                    ANY_ALIVE=1
+        while true; do
+            sleep 2
+            STILL_CONNECTED=1
+
+            for NUM in \$EVENT_NUMS; do
+                if [ ! -e "/dev/input/event\$NUM" ]; then
+                    STILL_CONNECTED=0
+                    break
                 fi
             done
             
-            if [ \$ANY_ALIVE -eq 0 ]; then
-                echo "⚠️ Device disconnected. Re-scanning hardware..."
+            if [ \$STILL_CONNECTED -eq 0 ]; then
+                echo "⚠️ Device disconnected! Cleaning up background processes..."
+                
+                for pid in \$LISTENER_PIDS; do
+                    kill \$pid 2>/dev/null
+                done
+                
+                echo "  Re-scanning hardware..."
                 break
             fi
         done
@@ -279,7 +287,7 @@ fi
 
 # --- TRIGGER EXECUTION ---
 if [ "\$1" == "trigger" ]; then
-    exec >> "$HOME/steam_error.log" 2>&1
+    exec >> "\$HOME/steam_error.log" 2>&1
     echo "========================================="
     echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
     echo "Timestamp: \$(date)"
@@ -302,8 +310,8 @@ if [ "\$1" == "trigger" ]; then
     fi
 
     # Dubbelkolla att vi faktiskt har en display nu, annars sätter vi standard-fallbacks
-    [ -z "$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY="wayland-0"
-    [ -z "$DISPLAY" ] && export DISPLAY=":0"
+    [ -z "\$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY="wayland-0"
+    [ -z "\$DISPLAY" ] && export DISPLAY=":0"
 
     CURRENT_ACTIVE_WS=\$(hyprctl monitors | awk '/active workspace:/ {print \$3; exit}')
     TARGET_WORKSPACE=\${CURRENT_ACTIVE_WS:-"1"}
@@ -380,6 +388,7 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
+Restart=on-failure
 KillMode=process
 Restart=always
 RestartSec=5
