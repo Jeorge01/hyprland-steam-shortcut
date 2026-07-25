@@ -25,6 +25,15 @@ cd hyprland-steam-shortcut
 chmod +x install.sh
 ./install.sh
 ```
+### Interactive Menu
+
+When you run the installer, you'll see an interactive menu powered by [gum](https://github.com/charmbracelet/gum):
+
+- **Bind device** — Calibrate and install the button trigger
+- **Unbind** — Remove the installation completely (service, sudoers, scripts, logs)
+
+`gum` is automatically installed if missing.
+
 ---
 
 ## Manual Installation (Alternative)
@@ -336,16 +345,12 @@ systemctl --user status xbox-steam.service
 
 ### Input Device Conflicts
 
-If calibration hangs (no button press detected) or the service runs but nothing happens, another process may have an exclusive grab (`EVIOCGRAB`) on your input device. Common culprits:
+If calibration hangs (no button press detected) or the service runs but nothing happens, another process may have an exclusive grab (`EVIOCGRAB`) on your input device. The installer automatically detects and handles common conflicts:
 
-- **input-remapper** — Run `sudo systemctl stop input-remapper` before calibration, then start it again after. Remove any Xbox controller presets from `~/.config/input-remapper-2/config.json` autoload to prevent conflicts.
-- **hkdm** (Hotkey Daemon for Mobile) — Run `sudo pacman -R hkdm && sudo systemctl stop hkdm && sudo systemctl disable hkdm` to fully remove it.
+- **input-remapper** — Automatically stopped during calibration. If it restarts after installation, the listener will display a warning. To prevent recurring conflicts, remove any Xbox controller presets from `~/.config/input-remapper-2/config.json` autoload.
+- **hkdm** (Hotkey Daemon for Mobile) — Automatically removed if detected.
 
-To check if a device is grabbed:
-```bash
-sudo evtest /dev/input/event14  # Replace with your device
-If you see "This device is grabbed by another process", find and stop the conflicting service first.
-```
+If calibration still fails, the installer will display a diagnostic report showing which processes hold your input devices, with actionable fix commands.
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
