@@ -173,6 +173,37 @@ if [ -z "$CAPTURED_LINE" ]; then
     echo -e "${RED}│${CLEAR} ❌ ERROR: No input device activity detected within 60s.         ${RED}│${CLEAR}"
     echo -e "${RED}│${CLEAR}    Installation aborted. Please try again.                      ${RED}│${CLEAR}"
     echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+    echo -e ""
+    echo -e "   ${YELLOW}Checking for conflicting processes...${CLEAR}"
+    echo -e ""
+
+    # Check known conflicting services
+    CONFLICT_FOUND=0
+    if systemctl is-active --quiet input-remapper 2>/dev/null; then
+        echo -e "   ${RED}●${CLEAR} input-remapper is running — ${YELLOW}sudo systemctl stop input-remapper${CLEAR}"
+        CONFLICT_FOUND=1
+    fi
+    if pgrep -x "hkdm" > /dev/null 2>&1; then
+        echo -e "   ${RED}●${CLEAR} hkdm is running — ${YELLOW}sudo pacman -R hkdm${CLEAR}"
+        CONFLICT_FOUND=1
+    fi
+
+    # Check who actually holds the input devices
+    HELD_BY=$(sudo fuser /dev/input/event* 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i+0==$i) print $i}' | sort -u)
+    if [ -n "$HELD_BY" ]; then
+        for PID in $HELD_BY; do
+            PROC_NAME=$(cat /proc/$PID/comm 2>/dev/null || echo "unknown")
+            echo -e "   ${RED}●${CLEAR} /dev/input/event* held by PID $PID ($PROC_NAME) — ${YELLOW}sudo kill -9 $PID${CLEAR}"
+        done
+        CONFLICT_FOUND=1
+    fi
+
+    if [ "$CONFLICT_FOUND" -eq 0 ]; then
+        echo -e "   ${YELLOW}No obvious conflicts found.${CLEAR}"
+        echo -e "   Make sure your controller is ${GREEN}ON${CLEAR} and ${GREEN}connected${CLEAR}."
+    fi
+
+    echo -e ""
     exit 1
 else
     # Parse out the event path, button code, and name
