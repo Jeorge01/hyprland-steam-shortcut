@@ -119,6 +119,14 @@ else
 fi
 
 # -------------------------------------------------------------------------
+# Stop input-remapper temporarily (it grabs all input devices and blocks evtest)
+# -------------------------------------------------------------------------
+if systemctl is-active --quiet input-remapper 2>/dev/null; then
+    echo "⏸  input-remapper is running — stopping temporarily for calibration..."
+    sudo systemctl stop input-remapper
+fi
+
+# -------------------------------------------------------------------------
 # LIVE BUTTON & DEVICE DETECTION (60s timeout & graceful abort)
 # -------------------------------------------------------------------------
 echo ""
@@ -312,6 +320,11 @@ if [ "\$1" == "listen" ]; then
 
         echo "Your calibrated device is ready! Initializing listener..."
 
+        if systemctl is-active --quiet input-remapper 2>/dev/null; then
+            echo "⚠️ WARNING: input-remapper is running and may block button detection"
+            echo "   Run: sudo systemctl stop input-remapper"
+        fi
+
         echo "" > /tmp/xbox-steam-pids.txt
         LISTENER_PIDS=""
 
@@ -358,6 +371,10 @@ fi
 
 # --- TRIGGER EXECUTION ---
 if [ "\$1" == "trigger" ]; then
+    LOCKFILE="/tmp/steam-trigger.lock"
+    exec 200>"\$LOCKFILE"
+    flock -n 200 || { echo "Trigger already running, skipping."; exit 0; }
+
     exec >> "\$HOME/steam_error.log" 2>&1
     echo "========================================="
     echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
