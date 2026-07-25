@@ -3,20 +3,20 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-HYPR_BLUE="\033[38;2;94;204;227m"
-HYPR_DARK_BLUE="\033[38;2;85;184;204m"
-HYPR_DARKEST_BLUE="\033[38;2;72;162;180m"
+HYPR_BLUE=$'\e[38;2;94;204;227m'
+HYPR_DARK_BLUE=$'\e[38;2;85;184;204m'
+HYPR_DARKEST_BLUE=$'\e[38;2;72;162;180m'
 
-GREEN="\033[38;2;94;227;149m"
-DARK_GREEN="\033[38;2;85;204;134m"
-DARKEST_GREEN="\033[38;2;72;180;117m"
+GREEN=$'\e[38;2;94;227;149m'
+DARK_GREEN=$'\e[38;2;85;204;134m'
+DARKEST_GREEN=$'\e[38;2;72;180;117m'
 
-YELLOW='\033[38;2;244;208;63m'
-RED='\033[38;2;231;76;60m'
-BLUE='\033[38;2;52;152;219m'
-CYAN='\033[38;2;26;188;156m'
-WHITE='\033[1;37m'
-CLEAR='\033[0m'
+YELLOW=$'\e[38;2;244;208;63m'
+RED=$'\e[38;2;231;76;60m'
+BLUE=$'\e[38;2;52;152;219m'
+CYAN=$'\e[38;2;26;188;156m'
+WHITE=$'\e[1;37m'
+CLEAR=$'\e[0m'
 
 log_info() {
     echo "$1" | fmt -w 57 | sed 's/^/   /'
@@ -32,6 +32,24 @@ run_cmd() {
     return 0
 }
 
+choose() {
+    if command -v gum &>/dev/null; then
+        gum choose --header "" --selected.foreground "#5ECCDF" --cursor.foreground "#5ECCDF" "$@"
+    else
+        local opts=()
+        local i=1
+        for opt in "$@"; do
+            echo -e "  [${WHITE}${i}${CLEAR}] $opt"
+            opts+=("$opt")
+            ((i++))
+        done
+        echo ""
+        echo -e -n "  Select option: "
+        read -r choice </dev/tty
+        echo "${opts[$((choice-1))]}"
+    fi
+}
+
 echo -e ""
 echo -e "${HYPR_BLUE}"
 
@@ -44,7 +62,6 @@ EOF
 )"
 
 echo -e "${CLEAR}"
-echo -e ""
 echo -e ""
 
 sudo -v || exit 1
@@ -64,6 +81,58 @@ trap cleanup EXIT
 if [ "$(id -u)" = "0" ]; then
     echo -e "${YELLOW}⚠️ Do not run this script with 'sudo' or as root directly.${CLEAR}"
     echo -e "${YELLOW}   Run it as a regular user. The script will ask for sudo when needed.${CLEAR}"
+    exit 1
+fi
+
+# Install gum for interactive menu
+if ! command -v gum &>/dev/null; then
+    echo -e "${YELLOW}  gum not found — installing for better UI...${CLEAR}"
+    if command -v pacman &>/dev/null; then
+        sudo pacman -S --needed --noconfirm gum
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y gum
+    fi
+fi
+CHOICE=$(choose "  Bind device — Install and calibrate button trigger" "  Unbind — Remove existing installation")
+
+if [[ "$CHOICE" == *"Unbind"* ]]; then
+    echo ""
+
+    # Check if anything is installed
+    HAS_INSTALL=0
+    systemctl --user is-enabled xbox-steam.service &>/dev/null && HAS_INSTALL=1
+    [ -f "$HOME/.config/systemd/user/xbox-steam.service" ] && HAS_INSTALL=1
+    [ -f "/etc/sudoers.d/xbox-steam-evtest" ] && HAS_INSTALL=1
+    [ -f "$HOME/run_steam.sh" ] && HAS_INSTALL=1
+
+    if [ "$HAS_INSTALL" -eq 0 ]; then
+        echo -e "${YELLOW}Nothing to remove — no installation found.${CLEAR}"
+        exit 0
+    fi
+
+    echo -e "${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
+    
+    systemctl --user stop xbox-steam.service 2>/dev/null || true
+    systemctl --user disable xbox-steam.service 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/xbox-steam.service"
+    systemctl --user daemon-reload 2>/dev/null || true
+    
+    sudo rm -f /etc/sudoers.d/xbox-steam-evtest
+    
+    rm -f "$HOME/run_steam.sh"
+    rm -f "$HOME/steam_error.log"
+    
+    if [ -f /tmp/xbox-steam-pids.txt ]; then
+        xargs kill -9 < /tmp/xbox-steam-pids.txt 2>/dev/null || true
+        rm -f /tmp/xbox-steam-pids.txt
+    fi
+    
+    echo -e "${GREEN}Uninstalled successfully.${CLEAR}"
+    exit 0
+fi
+
+if [[ "$CHOICE" != *"Bind"* ]]; then
+    echo -e "${RED}No valid selection.${CLEAR}"
     exit 1
 fi
 
