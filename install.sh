@@ -428,7 +428,7 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
-ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "$pid_file" ]; then xargs kill -9 < "$pid_file" 2>/dev/null; rm -f "$pid_file"; fi'
+ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "\$pid_file" ]; then xargs kill -9 < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi'
 KillMode=process
 Restart=always
 RestartSec=5
