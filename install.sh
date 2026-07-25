@@ -377,6 +377,20 @@ else
     echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L2}${HYPR_BLUE}  │${CLEAR}"
     echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
     echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+
+    # Blacklist check — prevent dangerous button bindings
+    BLACKLISTED_CODES="1 14 15 28 29 42 54 56 57 97 100 111 272 273 274 275 276 277 278"
+
+    if echo "$BLACKLISTED_CODES" | grep -qw "$TARGET_BTN_CODE"; then
+        echo -e ""
+        echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+        echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${TARGET_BTN_NAME}${CLEAR}' (code ${WHITE}${TARGET_BTN_CODE}${CLEAR}) is blacklisted.                ${RED}│${CLEAR}"
+        echo -e "${RED}│${CLEAR}    Binding this button would interfere with normal input.       ${RED}│${CLEAR}"
+        echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
+        echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+        echo -e ""
+        exit 1
+    fi
 fi
 echo "─────────────────────────────────────────"
 
