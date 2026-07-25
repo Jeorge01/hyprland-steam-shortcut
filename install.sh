@@ -64,7 +64,7 @@ EOF
 echo -e "${CLEAR}"
 echo -e ""
 
-sudo -v || exit 1
+sudo -v </dev/tty || exit 1
 while true; do sudo -n true; sleep 10; kill -0 "$$" || exit; done 2>/dev/null &
 SUDO_KEEP_ALIVE_PID=$!
 
