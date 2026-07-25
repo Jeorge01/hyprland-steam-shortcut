@@ -216,7 +216,7 @@ if systemctl --user is-active --quiet xbox-steam.service; then
     # 1. Döda våra specifika processer FÖRST (innan systemd hinner radera filen)
     if [ -f /tmp/xbox-steam-pids.txt ]; then
         log_info "Killing existing listeners..."
-        xargs kill -9 < /tmp/xbox-steam-pids.txt 2>/dev/null
+        xargs kill -9 < /tmp/xbox-steam-pids.txt 2>/dev/null || true
         rm -f /tmp/xbox-steam-pids.txt
     fi
     
@@ -226,7 +226,7 @@ fi
 
 # 3. Säkerhetsåtgärd: Döda eventuella kvarvarande evtest som matchar vår sökning
 # Detta fångar "spök-bindningar" även om de tappat kontakten med PID-filen
-pkill -f "evtest" 2>/dev/null
+sudo pkill -9 -f "[e]vtest" 2>/dev/null || true
 
 log_info "Creating/Updating automation script (~/run_steam.sh)..."
 cat << EOF > "$HOME/run_steam.sh"
@@ -388,7 +388,7 @@ if [ "\$1" == "trigger" ]; then
 
     echo "Forcing focus to Hyprland Workspace \$TARGET_WORKSPACE via modern Lua eval..."
     hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \$TARGET_WORKSPACE }))"
-    hyprctl eval "hl.dispatch(hl.dsp.window.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
+    hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
     hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" 2>/dev/null || true
 
     if [ -n "\$PID_LIST" ]; then
