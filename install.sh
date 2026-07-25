@@ -53,6 +53,23 @@ choose() {
     fi
 }
 
+confirm() {
+    if command -v gum &>/dev/null; then
+        gum confirm "$1" </dev/tty \
+            --prompt.foreground "#E74C3C" \
+            --selected.foreground "#FFFFFF" \
+            --selected.background "#E74C3C" \
+            --unselected.foreground "#CCCCCC" \
+            --unselected.background "#2A2A2A" \
+            --affirmative " Yes " \
+            --negative " No "
+    else
+        echo -n "$1 (y/n): "
+        read -r r </dev/tty
+        [[ "$r" =~ ^[Yy]$ ]]
+    fi
+}
+
 echo -e ""
 echo -e "${HYPR_BLUE}"
 
@@ -144,6 +161,18 @@ if [[ "$CHOICE" == *"Unbind"* ]]; then
 
     if [ "$HAS_INSTALL" -eq 0 ]; then
         echo -e "${YELLOW}Nothing to remove — no installation found.${CLEAR}"
+        exit 0
+    fi
+
+    echo -e "${YELLOW}This will remove:${CLEAR}"
+    echo -e "  - systemd service (xbox-steam.service)"
+    echo -e "  - sudoers rule (/etc/sudoers.d/xbox-steam-evtest)"
+    echo -e "  - automation script (~/run_steam.sh)"
+    echo -e "  - log file (~/steam_error.log)"
+    echo ""
+
+    if ! confirm "Are you sure?"; then
+        echo -e "${YELLOW}Aborted.${CLEAR}"
         exit 0
     fi
 
