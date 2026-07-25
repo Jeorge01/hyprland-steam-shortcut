@@ -378,6 +378,13 @@ else
     echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
     echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
 
+    # Default combo variables (overridden by calibration in Steg 2)
+    BIND_MODE="single"
+    MODIFIER_BTN_CODE=""
+    MODIFIER_BTN_NAME=""
+    TRIGGER_BTN_CODE=""
+    TRIGGER_BTN_NAME=""
+
     # Blacklist check — prevent dangerous button bindings
     BLACKLISTED_CODES="1 14 15 28 29 42 54 56 57 97 100 111 272 273 274 275 276 277 278"
 
@@ -424,8 +431,13 @@ cat << EOF > "$HOME/run_steam.sh"
 USER_NAME="$USER_NAME"
 USER_ID="$USER_ID"
 TARGET_DEV_NAME="$TARGET_DEV_NAME"
+BIND_MODE="$BIND_MODE"
 TARGET_BTN_CODE="$TARGET_BTN_CODE"
 TARGET_BTN_NAME="$TARGET_BTN_NAME"
+MODIFIER_BTN_CODE="$MODIFIER_BTN_CODE"
+MODIFIER_BTN_NAME="$MODIFIER_BTN_NAME"
+TRIGGER_BTN_CODE="$TRIGGER_BTN_CODE"
+TRIGGER_BTN_NAME="$TRIGGER_BTN_NAME"
 # ======================================================
 
 SCRIPT_PATH="\$(realpath "\$0")"
