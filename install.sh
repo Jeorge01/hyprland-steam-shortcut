@@ -3,6 +3,9 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Version (auto-detected from file modification date)
+VERSION=$(stat -c %y "$0" 2>/dev/null | cut -d' ' -f1 || echo "unknown")
+
 HYPR_BLUE=$'\e[38;2;94;204;227m'
 HYPR_DARK_BLUE=$'\e[38;2;85;184;204m'
 HYPR_DARKEST_BLUE=$'\e[38;2;72;162;180m'
@@ -63,6 +66,40 @@ EOF
 
 echo -e "${CLEAR}"
 echo -e ""
+
+# Handle --version flag
+if [ "${1:-}" = "--version" ]; then
+    echo "Latest update: ${VERSION}"
+    exit 0
+fi
+
+# Handle flags
+if [ "${1:-}" = "--status" ]; then
+    if systemctl --user is-active --quiet xbox-steam.service 2>/dev/null; then
+        echo -e "  ${GREEN}●${CLEAR} Service:    running"
+    else
+        echo -e "  ${RED}●${CLEAR} Service:    not running"
+    fi
+
+    echo -e "    Version:    ${WHITE}${VERSION}${CLEAR}"
+
+    if [ -f "$HOME/run_steam.sh" ]; then
+        DEVICE=$(grep "^TARGET_DEV_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
+        BUTTON=$(grep "^TARGET_BTN_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
+        echo -e "    Device:     ${WHITE}${DEVICE:-unknown}${CLEAR}"
+        echo -e "    Button:     ${WHITE}${BUTTON:-unknown}${CLEAR}"
+    else
+        echo -e "    ${YELLOW}No installation found.${CLEAR}"
+    fi
+
+    if [ -f /tmp/xbox-steam-pids.txt ] && [ -s /tmp/xbox-steam-pids.txt ]; then
+        echo -e "    Listener:   ${GREEN}active${CLEAR}"
+    else
+        echo -e "    Listener:   ${YELLOW}inactive${CLEAR}"
+    fi
+
+    exit 0
+fi
 
 sudo -v </dev/tty || exit 1
 while true; do sudo -n true; sleep 10; kill -0 "$$" || exit; done 2>/dev/null &
