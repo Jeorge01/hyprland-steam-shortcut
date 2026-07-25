@@ -113,6 +113,7 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash %h/run_steam.sh listen
+ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "$pid_file" ]; then xargs kill -9 < "$pid_file" 2>/dev/null; rm -f "$pid_file"; fi'
 KillMode=process
 Restart=always
 RestartSec=5
@@ -291,7 +292,7 @@ if [ "$1" == "trigger" ]; then
 
     echo "Forcing focus to Hyprland Workspace $TARGET_WORKSPACE via modern Lua eval..."
     hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $TARGET_WORKSPACE }))"
-    hyprctl eval "hl.dispatch(hl.dsp.window.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
+    hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
     hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" 2>/dev/null || true
 
     if [ -n "$PID_LIST" ]; then
@@ -331,6 +332,19 @@ cat ~/steam_error.log
 To check if the service successfully located your controller and is actively running, use:
 ```bash
 systemctl --user status xbox-steam.service
+```
+
+### Input Device Conflicts
+
+If calibration hangs (no button press detected) or the service runs but nothing happens, another process may have an exclusive grab (`EVIOCGRAB`) on your input device. Common culprits:
+
+- **input-remapper** — Run `sudo systemctl stop input-remapper` before calibration, then start it again after. Remove any Xbox controller presets from `~/.config/input-remapper-2/config.json` autoload to prevent conflicts.
+- **hkdm** (Hotkey Daemon for Mobile) — Run `sudo pacman -R hkdm && sudo systemctl stop hkdm && sudo systemctl disable hkdm` to fully remove it.
+
+To check if a device is grabbed:
+```bash
+sudo evtest /dev/input/event14  # Replace with your device
+If you see "This device is grabbed by another process", find and stop the conflicting service first.
 ```
 
 ## License
