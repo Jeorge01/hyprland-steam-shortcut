@@ -34,7 +34,7 @@ run_cmd() {
 
 choose() {
     if command -v gum &>/dev/null; then
-        gum choose --header "" --selected.foreground "#5ECCDF" --cursor.foreground "#5ECCDF" "$@"
+        gum choose --header "" --selected.foreground "#5ECCDF" --cursor.foreground "#5ECCDF" "$@" </dev/tty
     else
         local opts=()
         local i=1
