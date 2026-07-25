@@ -375,6 +375,8 @@ if [ "\$1" == "trigger" ]; then
     exec 200>"\$LOCKFILE"
     flock -n 200 || { echo "Trigger already running, skipping."; exit 0; }
 
+    [ -f "\$HOME/steam_error.log" ] && [ \$(stat -c%s "\$HOME/steam_error.log" 2>/dev/null || echo 0) -gt 524288 ] && mv "\$HOME/steam_error.log" "\$HOME/steam_error.log.old"
+
     exec >> "\$HOME/steam_error.log" 2>&1
     echo "========================================="
     echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
