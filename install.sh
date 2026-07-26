@@ -19,6 +19,9 @@ RED=$'\e[38;2;231;76;60m'
 BLUE=$'\e[38;2;52;152;219m'
 CYAN=$'\e[38;2;26;188;156m'
 WHITE=$'\e[1;37m'
+GRAY_BG=$'\e[48;2;42;42;42m'
+WHITE_FG=$'\e[38;2;255;255;255m'
+RESET_ALL=$'\e[0m'
 CLEAR=$'\e[0m'
 
 log_info() {
@@ -102,9 +105,19 @@ if [ "${1:-}" = "--status" ]; then
 
     if [ -f "$HOME/run_steam.sh" ]; then
         DEVICE=$(grep "^TARGET_DEV_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
-        BUTTON=$(grep "^TARGET_BTN_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
+        MODE=$(grep "^BIND_MODE=" "$HOME/run_steam.sh" | cut -d'"' -f2)
         echo -e "    Device:     ${WHITE}${DEVICE:-unknown}${CLEAR}"
-        echo -e "    Button:     ${WHITE}${BUTTON:-unknown}${CLEAR}"
+
+        if [ "$MODE" = "combo" ]; then
+            MOD=$(grep "^MODIFIER_BTN_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
+            TRG=$(grep "^TRIGGER_BTN_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
+            echo -e "    Mode:       ${WHITE}combo${CLEAR}"
+            echo -e "    Combo:      ${WHITE}${MOD} + ${TRG}${CLEAR}"
+        else
+            BUTTON=$(grep "^TARGET_BTN_NAME=" "$HOME/run_steam.sh" | cut -d'"' -f2)
+            echo -e "    Mode:       ${WHITE}single${CLEAR}"
+            echo -e "    Button:     ${WHITE}${BUTTON:-unknown}${CLEAR}"
+        fi
     else
         echo -e "    ${YELLOW}No installation found.${CLEAR}"
     fi
@@ -262,65 +275,55 @@ if systemctl is-active --quiet input-remapper 2>/dev/null; then
 fi
 
 # -------------------------------------------------------------------------
-# LIVE BUTTON & DEVICE DETECTION (60s timeout & graceful abort)
+# COMBO-AWARE CALIBRATION (2-fas evtest)
 # -------------------------------------------------------------------------
 echo ""
 echo -e "${HYPR_BLUE}  IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
 echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
-echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press the target button."
+echo -e "   Once you press ENTER, you will have ${YELLOW}60 seconds${CLEAR} to press a button."
+echo -e "   Supports ${YELLOW}single${CLEAR} or ${YELLOW}combo${CLEAR} binds (hold first button + press second)."
 echo ""
 echo -e -n "  Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
 read -r </dev/tty
 echo ""
 
-# Create a temporary file to store output from background workers
 TMP_CAPTURE=$(mktemp)
 
-# Start a listener on EVERY event device simultaneously in the background
 set +e
 for ev in /dev/input/event*; do
     if [ -r "$ev" ] || [ "$(id -u)" = "0" ] || command -v sudo &>/dev/null; then
-        # Background listeners will run for max 65 seconds if not killed sooner
         sudo timeout 65 evtest "$ev" 2>/dev/null | grep --line-buffered -m 1 "code.*BTN_.*value 1" | sed "s|^|$ev: |" >> "$TMP_CAPTURE" &
     fi
 done
 
-# Active polling loop: Check every 0.25 seconds if something was written to the file
+echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf '%*s' 21 '')${RESET_ALL}"
+
 CAPTURED_LINE=""
-for ((i=0; i<240; i++)); do  # 240 * 0.25s = 60 seconds maximum wait
+for ((i=0; i<240; i++)); do
     if [ -s "$TMP_CAPTURE" ]; then
         CAPTURED_LINE=$(head -n 1 "$TMP_CAPTURE")
         break
     fi
-    
-    # Print a dot every second (every 4th loop iteration) to show activity
-    if (( i % 4 == 0 )); then
-        echo -n ". "
-    fi
-    
     sleep 0.25
 done
 
-# Instantly kill all background listeners as soon as we break or timeout
 [[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
 set -e
-
-# Clear the trailing dots line
-echo ""
-
 rm -f "$TMP_CAPTURE"
 
 if [ -z "$CAPTURED_LINE" ]; then
-    echo ""
+    echo -ne "\033[1A\033[2K\r"
     echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+    echo -ne "\033[2K\r"
     echo -e "${RED}│${CLEAR} ❌ ERROR: No input device activity detected within 60s.         ${RED}│${CLEAR}"
+    echo -ne "\033[2K\r"
     echo -e "${RED}│${CLEAR}    Installation aborted. Please try again.                      ${RED}│${CLEAR}"
+    echo -ne "\033[2K\r"
     echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
     echo -e ""
     echo -e "   ${YELLOW}Checking for conflicting processes...${CLEAR}"
     echo -e ""
 
-    # Check known conflicting services
     CONFLICT_FOUND=0
     if systemctl is-active --quiet input-remapper 2>/dev/null; then
         echo -e "   ${RED}●${CLEAR} input-remapper is running — ${YELLOW}sudo systemctl stop input-remapper${CLEAR}"
@@ -331,7 +334,6 @@ if [ -z "$CAPTURED_LINE" ]; then
         CONFLICT_FOUND=1
     fi
 
-    # Check who actually holds the input devices
     HELD_BY=$(sudo fuser /dev/input/event* 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i+0==$i) print $i}' | sort -u)
     if [ -n "$HELD_BY" ]; then
         for PID in $HELD_BY; do
@@ -348,57 +350,124 @@ if [ -z "$CAPTURED_LINE" ]; then
 
     echo -e ""
     exit 1
-else
-    # Parse out the event path, button code, and name
-    DETECTED_EV=$(echo "$CAPTURED_LINE" | awk -F':' '{print $1}')
-    TARGET_BTN_CODE=$(echo "$CAPTURED_LINE" | grep -oP 'code \K[0-9]+')
-    TARGET_BTN_NAME=$(echo "$CAPTURED_LINE" | grep -oP 'BTN_[A-Z0-9]+')
-    TARGET_DEV_NAME=$(awk -v RS='' '/Handlers=.*'"${DETECTED_EV##*/}"'( |$)/' /proc/bus/input/devices | grep -oP 'Name="\K[^"]+')
-    
-    if [ -z "$TARGET_DEV_NAME" ]; then
-        TARGET_DEV_NAME="Generic Controller"
-    fi
-
-    RAW_L1="  Button press detected!"
-    RAW_L2="  Detected Device: $TARGET_DEV_NAME"
-    RAW_L3=" 󰪥 Mapped Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)"
-
-    PAD_L1=$(echo "$RAW_L1" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
-    PAD_L2=$(echo "$RAW_L2" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
-    PAD_L3=$(echo "$RAW_L3" | awk '{printf "%s%*s", $0, 62-length($0), ""}')
-
-    COLOR_L1="${HYPR_BLUE}   Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE} pr${HYPR_DARK_BLUE}es${HYPR_DARKEST_BLUE}s${HYPR_BLUE} det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed!${CLEAR}${PAD_L1#*detected!}"
-    COLOR_L2="${HYPR_BLUE}   Det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} De${HYPR_DARK_BLUE}vi${HYPR_DARKEST_BLUE}ce${HYPR_BLUE}: ${CLEAR}${WHITE}${TARGET_DEV_NAME}${CLEAR}${PAD_L2#*Device: $TARGET_DEV_NAME}"
-    COLOR_L3="${HYPR_BLUE} 󰪥  Ma${HYPR_DARK_BLUE}pp${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE}:   ${CLEAR}${WHITE}${TARGET_BTN_NAME} (Code: ${TARGET_BTN_CODE})${CLEAR}${PAD_L3#*Button:   $TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)}"
-
-    echo ""
-    echo -e "${HYPR_BLUE}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
-    echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L1}${HYPR_BLUE}  │${CLEAR}"
-    echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L2}${HYPR_BLUE}  │${CLEAR}"
-    echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
-    echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
-
-    # Default combo variables (overridden by calibration in Steg 2)
-    BIND_MODE="single"
-    MODIFIER_BTN_CODE=""
-    MODIFIER_BTN_NAME=""
-    TRIGGER_BTN_CODE=""
-    TRIGGER_BTN_NAME=""
-
-    # Blacklist check — prevent dangerous button bindings
-    BLACKLISTED_CODES="1 14 15 28 29 42 54 56 57 97 100 111 272 273 274 275 276 277 278"
-
-    if echo "$BLACKLISTED_CODES" | grep -qw "$TARGET_BTN_CODE"; then
-        echo -e ""
-        echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
-        echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${TARGET_BTN_NAME}${CLEAR}' (code ${WHITE}${TARGET_BTN_CODE}${CLEAR}) is blacklisted.                ${RED}│${CLEAR}"
-        echo -e "${RED}│${CLEAR}    Binding this button would interfere with normal input.       ${RED}│${CLEAR}"
-        echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
-        echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
-        echo -e ""
-        exit 1
-    fi
 fi
+
+# Parsa första knappen
+DETECTED_EV=$(echo "$CAPTURED_LINE" | awk -F':' '{print $1}')
+FIRST_BTN_CODE=$(echo "$CAPTURED_LINE" | grep -oP 'code \K[0-9]+')
+FIRST_BTN_NAME=$(echo "$CAPTURED_LINE" | grep -oP 'BTN_[A-Z0-9]+')
+
+TARGET_DEV_NAME=$(awk -v RS='' '/Handlers=.*'"${DETECTED_EV##*/}"'( |$)/' /proc/bus/input/devices | grep -oP 'Name="\K[^"]+')
+[ -z "$TARGET_DEV_NAME" ] && TARGET_DEV_NAME="Generic Controller"
+
+echo -ne "\033[1A\033[2K\r"
+echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Detected: ${FIRST_BTN_NAME}$(printf '%*s' $((31 - ${#FIRST_BTN_NAME})) '')${RESET_ALL}"
+
+echo ""
+echo -e -n "  Hold for ${YELLOW}combo${CLEAR}, or release for ${HYPR_BLUE}single${CLEAR} mode..."
+
+COMBO_FOUND=0
+TMP_COMBO=$(mktemp)
+
+set +e
+sudo timeout 5 evtest "$DETECTED_EV" 2>/dev/null > "$TMP_COMBO" &
+COMBO_LISTENER_PID=$!
+
+for ((i=0; i<20; i++)); do
+    if grep -q "code $FIRST_BTN_CODE .*value 0" "$TMP_COMBO" 2>/dev/null; then
+        break
+    fi
+
+    SECOND_LINE=$(grep -m 1 "code.*BTN_.*value 1" "$TMP_COMBO" 2>/dev/null)
+    if [ -n "$SECOND_LINE" ]; then
+        SECOND_BTN_CODE=$(echo "$SECOND_LINE" | grep -oP 'code \K[0-9]+')
+
+        if [ "$SECOND_BTN_CODE" != "$FIRST_BTN_CODE" ]; then
+            SECOND_BTN_NAME=$(echo "$SECOND_LINE" | grep -oP 'BTN_[A-Z0-9]+')
+            COMBO_FOUND=1
+            BIND_MODE="combo"
+            MODIFIER_BTN_CODE="$FIRST_BTN_CODE"
+            MODIFIER_BTN_NAME="$FIRST_BTN_NAME"
+            TRIGGER_BTN_CODE="$SECOND_BTN_CODE"
+            TRIGGER_BTN_NAME="$SECOND_BTN_NAME"
+        fi
+        break
+    fi
+    sleep 0.25
+done
+
+kill $COMBO_LISTENER_PID 2>/dev/null || true
+[[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
+set -e
+rm -f "$TMP_COMBO"
+
+if [ "$COMBO_FOUND" -eq 0 ]; then
+    BIND_MODE="single"
+    TARGET_BTN_CODE="$FIRST_BTN_CODE"
+    TARGET_BTN_NAME="$FIRST_BTN_NAME"
+fi
+
+echo -ne "\033[2A\033[2K\r"
+if [ "$BIND_MODE" = "combo" ]; then
+    echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')${MODIFIER_BTN_NAME} + ${TRIGGER_BTN_NAME}$(printf '%*s' $((41 - ${#MODIFIER_BTN_NAME} - ${#TRIGGER_BTN_NAME})) '')${RESET_ALL}"
+else
+    echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')${TARGET_BTN_NAME}$(printf '%*s' $((41 - ${#TARGET_BTN_NAME})) '')${RESET_ALL}"
+fi
+echo -ne "\033[2K\r"
+echo -ne "\033[2K\r"
+
+echo ""
+echo -e "${HYPR_BLUE}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+
+VAL_COL=21
+
+if [ "$BIND_MODE" = "combo" ]; then
+    L3_VAL="$MODIFIER_BTN_NAME + $TRIGGER_BTN_NAME"
+else
+    L3_VAL="$TARGET_BTN_NAME (Code: $TARGET_BTN_CODE)"
+fi
+
+L2_TRAIL=$(printf '%*s' $((59 - VAL_COL - ${#TARGET_DEV_NAME})) '')
+L3_TRAIL=$(printf '%*s' $((59 - VAL_COL - ${#L3_VAL})) '')
+L4_TRAIL=$(printf '%*s' $((59 - VAL_COL - ${#BIND_MODE})) '')
+
+COLOR_L1="${HYPR_BLUE}   Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE} pr${HYPR_DARK_BLUE}es${HYPR_DARKEST_BLUE}s${HYPR_BLUE} det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed!${CLEAR}   $(printf '%*s' $((59 - 25)) '')"
+COLOR_L2="${HYPR_BLUE}   Det${HYPR_DARK_BLUE}ect${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} De${HYPR_DARK_BLUE}vi${HYPR_DARKEST_BLUE}ce${HYPR_BLUE}:     ${CLEAR}${WHITE}${TARGET_DEV_NAME}${CLEAR}${L2_TRAIL}"
+if [ "$BIND_MODE" = "combo" ]; then
+    COLOR_L3="${HYPR_BLUE} 󰪥  Ma${HYPR_DARK_BLUE}pp${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} Co${HYPR_DARK_BLUE}mb${HYPR_DARKEST_BLUE}o${HYPR_BLUE}:        ${CLEAR}${WHITE}${L3_VAL}${CLEAR}${L3_TRAIL}"
+else
+    COLOR_L3="${HYPR_BLUE} 󰪥  Ma${HYPR_DARK_BLUE}pp${HYPR_DARKEST_BLUE}ed${HYPR_BLUE} Bu${HYPR_DARK_BLUE}tt${HYPR_DARKEST_BLUE}on${HYPR_BLUE}:       ${CLEAR}${WHITE}${L3_VAL}${CLEAR}${L3_TRAIL}"
+fi
+COLOR_L4="${HYPR_BLUE}   Bi${HYPR_DARK_BLUE}nd${HYPR_DARKEST_BLUE} T${HYPR_BLUE}yp${HYPR_DARK_BLUE}e${HYPR_DARKEST_BLUE}:${CLEAR}           ${WHITE}${BIND_MODE}${CLEAR}${L4_TRAIL}"
+
+echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L1}${HYPR_BLUE}  │${CLEAR}"
+echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L2}${HYPR_BLUE}  │${CLEAR}"
+echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
+echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L4}${HYPR_BLUE}  │${CLEAR}"
+echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+
+# Blacklist check — prevent dangerous button bindings
+BLACKLISTED_CODES="1 14 15 28 29 42 54 56 57 97 100 111 272 273 274 275 276 277 278"
+
+if [ "$BIND_MODE" = "combo" ]; then
+    CHECK_BTN_CODE="$TRIGGER_BTN_CODE"
+    CHECK_BTN_NAME="$TRIGGER_BTN_NAME"
+else
+    CHECK_BTN_CODE="$TARGET_BTN_CODE"
+    CHECK_BTN_NAME="$TARGET_BTN_NAME"
+fi
+
+if echo "$BLACKLISTED_CODES" | grep -qw "$CHECK_BTN_CODE"; then
+    echo -e ""
+    echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+    echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${CHECK_BTN_NAME}${CLEAR}' (code ${WHITE}${CHECK_BTN_CODE}${CLEAR}) is blacklisted.                ${RED}│${CLEAR}"
+    echo -e "${RED}│${CLEAR}    Binding this button would interfere with normal input.       ${RED}│${CLEAR}"
+    echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
+    echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+    echo -e ""
+    exit 1
+fi
+
 echo "─────────────────────────────────────────"
 
 ## -------------------------------------------------------------------------
@@ -446,31 +515,12 @@ if [ "\$1" == "listen" ]; then
     echo "Starting listener..."
 
     while true; do
-        while true; do
-            CHECK_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" '
-                BEGIN { RS="\n\n|--\n"; IGNORECASE=1 }
-                \$0 ~ "N: Name=\"" name "\"" && \$0 ~ "P: Phys=.+" {
-                    if (match(\$0, /Handlers=[^\n]+/)) {
-                        handlers = substr(\$0, RSTART, RLENGTH);
-                        split(handlers, arr, " ");
-                        for (i in arr) {
-                            if (arr[i] ~ /event/) {
-                                gsub(/[^0-9]/, "", arr[i]);
-                                print arr[i];
-                            }
-                        }
-                    }
-                }
-            ' /proc/bus/input/devices)
-
-            if [ -n "\$CHECK_NUMS" ]; then
-                EVENT_NUMS="\$CHECK_NUMS"
-                break
-            fi
-
-            echo "Waiting for your specific physical controller (\$TARGET_DEV_NAME) to initialize..."
+        until awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index(\$0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
+            echo "Waiting for your specific controller (\$TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
+
+        EVENT_NUMS=\$(awk -v name="\$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index(\$0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if(\$i~/event/) print \$i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
         
         for NUM in \$EVENT_NUMS; do
             until [ -r "/dev/input/event\$NUM" ]; do
@@ -494,8 +544,31 @@ if [ "\$1" == "listen" ]; then
                 echo "Listening on /dev/input/event\$NUM"
                 (
                     sudo evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
-                        if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
-                            /bin/bash "\$SCRIPT_PATH" trigger &
+                        echo "[DEBUG-EV] \$line" >> "\$HOME/steam_error.log"
+                        if [ "\$BIND_MODE" = "combo" ]; then
+                            if echo "\$line" | grep -q "code \$MODIFIER_BTN_CODE.*value 1"; then
+                                MODIFIER_HELD=1
+                                echo "[DEBUG-COMBO] Modifier \$MODIFIER_BTN_NAME HELD (code \$MODIFIER_BTN_CODE)" >> "\$HOME/steam_error.log"
+                            fi
+                            if echo "\$line" | grep -q "code \$MODIFIER_BTN_CODE.*value 0"; then
+                                MODIFIER_HELD=0
+                                echo "[DEBUG-COMBO] Modifier \$MODIFIER_BTN_NAME RELEASED" >> "\$HOME/steam_error.log"
+                            fi
+                            if echo "\$line" | grep -q "code \$TRIGGER_BTN_CODE.*value 1"; then
+                                echo "[DEBUG-COMBO] Trigger \$TRIGGER_BTN_NAME detected! MODIFIER_HELD=\${MODIFIER_HELD:-0}" >> "\$HOME/steam_error.log"
+                                if [ "\${MODIFIER_HELD:-0}" -eq 1 ]; then
+                                    MODIFIER_HELD=0
+                                    echo "[DEBUG-COMBO] >>> COMBO FIRE <<<" >> "\$HOME/steam_error.log"
+                                    /bin/bash "\$SCRIPT_PATH" trigger &
+                                else
+                                    echo "[DEBUG-COMBO] Trigger IGNORED (modifier not held)" >> "\$HOME/steam_error.log"
+                                fi
+                            fi
+                        else
+                            if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
+                                echo "[DEBUG-SINGLE] Single trigger fired!" >> "\$HOME/steam_error.log"
+                                /bin/bash "\$SCRIPT_PATH" trigger &
+                            fi
                         fi
                     done
                 ) &
@@ -532,10 +605,6 @@ fi
 
 # --- TRIGGER EXECUTION ---
 if [ "\$1" == "trigger" ]; then
-    LOCKFILE="/tmp/steam-trigger.lock"
-    exec 200>"\$LOCKFILE"
-    flock -n 200 || { echo "Trigger already running, skipping."; exit 0; }
-
     [ -f "\$HOME/steam_error.log" ] && [ \$(stat -c%s "\$HOME/steam_error.log" 2>/dev/null || echo 0) -gt 524288 ] && mv "\$HOME/steam_error.log" "\$HOME/steam_error.log.old"
 
     exec >> "\$HOME/steam_error.log" 2>&1
