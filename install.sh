@@ -275,6 +275,32 @@ if systemctl is-active --quiet input-remapper 2>/dev/null; then
 fi
 
 # -------------------------------------------------------------------------
+# PAUSE SERVICE DURING CALIBRATION
+# -------------------------------------------------------------------------
+SERVICE_WAS_ACTIVE=0
+if systemctl --user is-active --quiet xbox-steam.service 2>/dev/null; then
+    SERVICE_WAS_ACTIVE=1
+    log_info "Pausing active binds for calibration..."
+    systemctl --user stop xbox-steam.service 2>/dev/null || true
+    sudo pkill -9 -f "[e]vtest" 2>/dev/null || true
+fi
+touch /tmp/xbox-steam-calibrating
+
+restore_service() {
+    echo ""
+    rm -f /tmp/xbox-steam-calibrating
+    if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
+        echo -e "${YELLOW}Calibration aborted. Restoring previous binds...${CLEAR}"
+        systemctl --user start xbox-steam.service 2>/dev/null || true
+        echo -e "${GREEN}Previous binds restored.${CLEAR}"
+    else
+        echo -e "${YELLOW}Calibration aborted.${CLEAR}"
+    fi
+    exit 0
+}
+trap restore_service INT TERM
+
+# -------------------------------------------------------------------------
 # COMBO-AWARE CALIBRATION (2-fas evtest)
 # -------------------------------------------------------------------------
 echo ""
@@ -468,29 +494,14 @@ if echo "$BLACKLISTED_CODES" | grep -qw "$CHECK_BTN_CODE"; then
     exit 1
 fi
 
+trap - INT TERM
 echo "─────────────────────────────────────────"
 
 ## -------------------------------------------------------------------------
 # STEP 3: CREATE FILES & ACTIVATE
 # -------------------------------------------------------------------------
 
-if systemctl --user is-active --quiet xbox-steam.service; then
-    echo "  Existing service detected. Stopping safely..."
-    
-    # 1. Döda våra specifika processer FÖRST (innan systemd hinner radera filen)
-    if [ -f /tmp/xbox-steam-pids.txt ]; then
-        log_info "Killing existing listeners..."
-        xargs kill -9 < /tmp/xbox-steam-pids.txt 2>/dev/null || true
-        rm -f /tmp/xbox-steam-pids.txt
-    fi
-    
-    # 2. Stoppa tjänsten efteråt
-    systemctl --user stop xbox-steam.service &>/dev/null
-fi
-
-# 3. Säkerhetsåtgärd: Döda eventuella kvarvarande evtest som matchar vår sökning
-# Detta fångar "spök-bindningar" även om de tappat kontakten med PID-filen
-sudo pkill -9 -f "[e]vtest" 2>/dev/null || true
+rm -f /tmp/xbox-steam-calibrating
 
 log_info "Creating/Updating automation script (~/run_steam.sh)..."
 cat << EOF > "$HOME/run_steam.sh"
@@ -544,6 +555,7 @@ if [ "\$1" == "listen" ]; then
                 echo "Listening on /dev/input/event\$NUM"
                 (
                     sudo evtest /dev/input/event\$NUM 2>/dev/null | while read -r line; do
+                        [ -f /tmp/xbox-steam-calibrating ] && continue
                         echo "[DEBUG-EV] \$line" >> "\$HOME/steam_error.log"
                         if [ "\$BIND_MODE" = "combo" ]; then
                             if echo "\$line" | grep -q "code \$MODIFIER_BTN_CODE.*value 1"; then
@@ -605,6 +617,7 @@ fi
 
 # --- TRIGGER EXECUTION ---
 if [ "\$1" == "trigger" ]; then
+    [ -f /tmp/xbox-steam-calibrating ] && exit 0
     [ -f "\$HOME/steam_error.log" ] && [ \$(stat -c%s "\$HOME/steam_error.log" 2>/dev/null || echo 0) -gt 524288 ] && mv "\$HOME/steam_error.log" "\$HOME/steam_error.log.old"
 
     exec >> "\$HOME/steam_error.log" 2>&1
