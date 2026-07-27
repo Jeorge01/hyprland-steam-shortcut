@@ -288,7 +288,7 @@ touch /tmp/xbox-steam-calibrating
 
 restore_service() {
     printf '\033[?25h'
-    stty echo
+    stty echo -F /dev/tty
     echo ""
     rm -f /tmp/xbox-steam-calibrating
     if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
@@ -349,7 +349,7 @@ for ev in /dev/input/event*; do
 done
 
 printf '\033[?25l'
-stty -echo
+stty -echo -F /dev/tty
 echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf '%*s' 21 '')${RESET_ALL}"
 
 CALIB_PHASE=1
@@ -397,7 +397,7 @@ while IFS= read -r line; do
     fi
 done < <(timeout 70 tail -f -n +1 "$CALIB_EVTEST" 2>/dev/null)
 printf '\033[?25h'
-stty echo
+stty echo -F /dev/tty
 set -e
 
 [[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
