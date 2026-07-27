@@ -316,29 +316,65 @@ read -r </dev/tty
 echo ""
 fi
 
-TMP_CAPTURE=$(mktemp)
+CALIB_EVTEST=$(mktemp)
 
 set +e
 for ev in /dev/input/event*; do
     if [ -r "$ev" ] || [ "$(id -u)" = "0" ] || command -v sudo &>/dev/null; then
-        sudo timeout 65 evtest "$ev" 2>/dev/null | grep --line-buffered -m 1 "code.*BTN_.*value 1" | sed "s|^|$ev: |" >> "$TMP_CAPTURE" &
+        sudo stdbuf -oL timeout 70 evtest "$ev" 2>/dev/null | stdbuf -oL sed "s|^|$ev: |" >> "$CALIB_EVTEST" &
     fi
 done
 
 echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf '%*s' 21 '')${RESET_ALL}"
 
+CALIB_PHASE=1
 CAPTURED_LINE=""
-for ((i=0; i<240; i++)); do
-    if [ -s "$TMP_CAPTURE" ]; then
-        CAPTURED_LINE=$(head -n 1 "$TMP_CAPTURE")
-        break
+COMBO_RESULT=""
+COMBO_BTN_CODE=""
+COMBO_BTN_NAME=""
+
+while IFS= read -r line; do
+    if [ "$CALIB_PHASE" -eq 1 ]; then
+        if echo "$line" | grep -q "code.*BTN_.*value 1"; then
+            CAPTURED_LINE="$line"
+            DETECTED_EV=$(echo "$line" | awk -F':' '{print $1}')
+            FIRST_BTN_CODE=$(echo "$line" | grep -oP 'code \K[0-9]+')
+            FIRST_BTN_NAME=$(echo "$line" | grep -oP 'BTN_[A-Z0-9]+')
+
+            TARGET_DEV_NAME=$(awk -v RS='' '/Handlers=.*'"${DETECTED_EV##*/}"'( |$)/' /proc/bus/input/devices | grep -oP 'Name="\K[^"]+')
+            [ -z "$TARGET_DEV_NAME" ] && TARGET_DEV_NAME="Generic Controller"
+
+            echo -ne "\033[1A\033[2K\r"
+            echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Detected: ${FIRST_BTN_NAME}$(printf '%*s' $((31 - ${#FIRST_BTN_NAME})) '')${RESET_ALL}"
+            echo ""
+            echo -e -n "  Hold for ${YELLOW}combo${CLEAR}, or release for ${HYPR_BLUE}single${CLEAR} mode..."
+            CALIB_PHASE=2
+        fi
+    else
+        if [[ "$line" != "${DETECTED_EV}:"* ]]; then
+            continue
+        fi
+        if echo "$line" | grep -q "code $FIRST_BTN_CODE .*value 0"; then
+            COMBO_RESULT="single"
+            break
+        fi
+        if echo "$line" | grep -q "code.*BTN_.*value 1"; then
+            BTN_CODE=$(echo "$line" | grep -oP 'code \K[0-9]+')
+            if [ "$BTN_CODE" != "$FIRST_BTN_CODE" ]; then
+                COMBO_RESULT="combo"
+                COMBO_BTN_CODE="$BTN_CODE"
+                COMBO_BTN_NAME=$(echo "$line" | grep -oP 'BTN_[A-Z0-9]+')
+            else
+                COMBO_RESULT="single"
+            fi
+            break
+        fi
     fi
-    sleep 0.25
-done
+done < <(timeout 70 tail -f -n +1 "$CALIB_EVTEST" 2>/dev/null)
+set -e
 
 [[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
-set -e
-rm -f "$TMP_CAPTURE"
+rm -f "$CALIB_EVTEST"
 
 if [ -z "$CAPTURED_LINE" ]; then
     echo -ne "\033[1A\033[2K\r"
@@ -381,54 +417,18 @@ if [ -z "$CAPTURED_LINE" ]; then
     exit 1
 fi
 
-# Parsa första knappen
-DETECTED_EV=$(echo "$CAPTURED_LINE" | awk -F':' '{print $1}')
-FIRST_BTN_CODE=$(echo "$CAPTURED_LINE" | grep -oP 'code \K[0-9]+')
-FIRST_BTN_NAME=$(echo "$CAPTURED_LINE" | grep -oP 'BTN_[A-Z0-9]+')
-
-TARGET_DEV_NAME=$(awk -v RS='' '/Handlers=.*'"${DETECTED_EV##*/}"'( |$)/' /proc/bus/input/devices | grep -oP 'Name="\K[^"]+')
-[ -z "$TARGET_DEV_NAME" ] && TARGET_DEV_NAME="Generic Controller"
-
-echo -ne "\033[1A\033[2K\r"
-echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Detected: ${FIRST_BTN_NAME}$(printf '%*s' $((31 - ${#FIRST_BTN_NAME})) '')${RESET_ALL}"
-
-echo ""
-echo -e -n "  Hold for ${YELLOW}combo${CLEAR}, or release for ${HYPR_BLUE}single${CLEAR} mode..."
-
 COMBO_FOUND=0
-TMP_COMBO=$(mktemp)
 
-set +e
-sudo timeout 5 evtest "$DETECTED_EV" 2>/dev/null > "$TMP_COMBO" &
-COMBO_LISTENER_PID=$!
-
-for ((i=0; i<20; i++)); do
-    if grep -q "code $FIRST_BTN_CODE .*value 0" "$TMP_COMBO" 2>/dev/null; then
-        break
-    fi
-
-    SECOND_LINE=$(grep -m 1 "code.*BTN_.*value 1" "$TMP_COMBO" 2>/dev/null)
-    if [ -n "$SECOND_LINE" ]; then
-        SECOND_BTN_CODE=$(echo "$SECOND_LINE" | grep -oP 'code \K[0-9]+')
-
-        if [ "$SECOND_BTN_CODE" != "$FIRST_BTN_CODE" ]; then
-            SECOND_BTN_NAME=$(echo "$SECOND_LINE" | grep -oP 'BTN_[A-Z0-9]+')
-            COMBO_FOUND=1
-            BIND_MODE="combo"
-            MODIFIER_BTN_CODE="$FIRST_BTN_CODE"
-            MODIFIER_BTN_NAME="$FIRST_BTN_NAME"
-            TRIGGER_BTN_CODE="$SECOND_BTN_CODE"
-            TRIGGER_BTN_NAME="$SECOND_BTN_NAME"
-        fi
-        break
-    fi
-    sleep 0.25
-done
-
-kill $COMBO_LISTENER_PID 2>/dev/null || true
-[[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
-set -e
-rm -f "$TMP_COMBO"
+if [ "$COMBO_RESULT" = "combo" ]; then
+    COMBO_FOUND=1
+    BIND_MODE="combo"
+    MODIFIER_BTN_CODE="$FIRST_BTN_CODE"
+    MODIFIER_BTN_NAME="$FIRST_BTN_NAME"
+    TRIGGER_BTN_CODE="$COMBO_BTN_CODE"
+    TRIGGER_BTN_NAME="$COMBO_BTN_NAME"
+else
+    COMBO_FOUND=0
+fi
 
 if [ "$COMBO_FOUND" -eq 0 ]; then
     BIND_MODE="single"
