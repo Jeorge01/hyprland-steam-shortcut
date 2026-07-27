@@ -303,6 +303,8 @@ trap restore_service INT TERM
 # -------------------------------------------------------------------------
 # COMBO-AWARE CALIBRATION (2-fas evtest)
 # -------------------------------------------------------------------------
+while true; do
+if [ "${IS_REDO:-0}" -eq 0 ]; then
 echo ""
 echo -e "${HYPR_BLUE}  IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
 echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
@@ -312,6 +314,7 @@ echo ""
 echo -e -n "  Press ${HYPR_BLUE}[ENTER]${CLEAR} when you are ready to calibrate (or ${RED}Ctrl+C${CLEAR} to abort)..."
 read -r </dev/tty
 echo ""
+fi
 
 TMP_CAPTURE=$(mktemp)
 
@@ -493,6 +496,42 @@ if echo "$BLACKLISTED_CODES" | grep -qw "$CHECK_BTN_CODE"; then
     echo -e ""
     exit 1
 fi
+
+echo ""
+BIND_CONFIRM=""
+if command -v gum &>/dev/null; then
+    if gum confirm "Want to use this bind?" \
+        --affirmative " Use bind " \
+        --negative " Redo " \
+        --prompt.foreground "#5ECCDF" \
+        --selected.foreground "#FFFFFF" \
+        --selected.background "#5ECCDF" \
+        --unselected.foreground "#CCCCCC" \
+        --unselected.background "#2A2A2A" \
+        </dev/tty; then
+        BIND_CONFIRM="Use bind"
+    else
+        BIND_CONFIRM="Redo"
+    fi
+else
+    echo -n "Want to use this bind? (y/n): "
+    read -r r </dev/tty
+    if [[ "$r" =~ ^[Yy]$ ]]; then
+        BIND_CONFIRM="Use bind"
+    else
+        BIND_CONFIRM="Redo"
+    fi
+fi
+
+if [[ "$BIND_CONFIRM" == *"Redo"* ]]; then
+    echo -e "  ${YELLOW}Redoing calibration...${CLEAR}"
+    echo -e ""
+    IS_REDO=1
+    continue
+fi
+
+break
+done
 
 trap - INT TERM
 echo "─────────────────────────────────────────"
