@@ -2,7 +2,7 @@
 
 Automated background service that maps any designated device input to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
 
-![Showcase](assets/showcase.png)
+<img src="assets/showcase.png" alt="Showcase" style="border-radius: 12px;" />
 
 ---
 
