@@ -4,8 +4,6 @@ Automated background service that maps any designated device input to launch Ste
 
 ![Showcase](assets/showcase.png)
 
----
-
 ## Requirements
 
 <table border="0" cellpadding="0" cellspacing="0" rules="none">
