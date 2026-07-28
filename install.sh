@@ -151,11 +151,11 @@ if [ "$(id -u)" = "0" ]; then
     exit 1
 fi
 
-# Batch validation: systemkrav
+# Batch validation: system requirements
 ERRORS=()
 
 if ! command -v systemctl &> /dev/null; then
-    ERRORS+=("systemd (systemctl) not found — krävs för systemd user service")
+    ERRORS+=("systemd (systemctl) not found — required for systemd user service")
 fi
 
 if command -v pacman &> /dev/null; then
@@ -169,7 +169,7 @@ else
 fi
 
 if ! command -v hyprctl &> /dev/null; then
-    ERRORS+=("Hyprland (hyprctl) not found — krävs för workspace-fokus")
+    ERRORS+=("Hyprland (hyprctl) not found — required for workspace focus")
 fi
 
 if [ ${#ERRORS[@]} -gt 0 ]; then
@@ -712,9 +712,9 @@ if [ "\$1" == "trigger" ]; then
     export DISPLAY=\$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
     export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
 
-    # 2. Om systemd saknar Wayland-variabeln (dvs. startade för tidigt), leta upp den grafiska sessionen manuellt
+    # 2. If systemd lacks the Wayland variable (started too early), find the graphical session manually
     if [ -z "\$WAYLAND_DISPLAY" ]; then
-        # Hitta PID för det aktiva gränssnittet (stöder Hyprland, Sway, Wayfire etc.)
+        # Find PID of the active compositor (supports Hyprland, Sway, Wayfire, etc.)
         COMPOSITOR_PID=\$(pgrep -u "\$USER" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
         
         if [ -n "\$COMPOSITOR_PID" ]; then
@@ -724,7 +724,7 @@ if [ "\$1" == "trigger" ]; then
         fi
     fi
 
-    # Dubbelkolla att vi faktiskt har en display nu, annars sätter vi standard-fallbacks
+    # Double-check that we have a display now, otherwise set standard fallbacks
     [ -z "\$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY="wayland-0"
     [ -z "\$DISPLAY" ] && export DISPLAY=":0"
 
