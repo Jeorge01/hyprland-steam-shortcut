@@ -151,12 +151,34 @@ if [ "$(id -u)" = "0" ]; then
     exit 1
 fi
 
+# Detect Package Manager
+if command -v pacman &> /dev/null; then
+    DISTRO="󰣇 Arch"
+    PKG_MANAGER="pacman"
+elif command -v dnf &> /dev/null; then
+    DISTRO=" Fedora"
+    PKG_MANAGER="dnf"
+else
+    echo -e "${RED}❌ Unsupported distribution.${CLEAR}"
+    echo -e "${RED}   This script currently only supports Arch Linux (pacman) and Fedora (dnf).${CLEAR}"
+    exit 1
+fi
+
+if ! command -v steam &> /dev/null; then
+    echo -e "${RED}❌ ERROR: Steam is missing from your system.${CLEAR}"
+    echo -e "${RED}   Please install Steam first before running this installation script.${CLEAR}"
+    exit 1
+fi
+
+USER_NAME=$(id -un)
+USER_ID=$(id -u)
+
 # Install gum for interactive menu
 if ! command -v gum &>/dev/null; then
     echo -e "${YELLOW}  gum not found — installing for better UI...${CLEAR}"
-    if command -v pacman &>/dev/null; then
+    if [ "$PKG_MANAGER" = "pacman" ]; then
         sudo pacman -S --needed --noconfirm gum
-    elif command -v dnf &>/dev/null; then
+    elif [ "$PKG_MANAGER" = "dnf" ]; then
         sudo dnf install -y gum
     fi
 fi
@@ -215,33 +237,11 @@ if [[ "$CHOICE" != *"Bind"* ]]; then
     exit 1
 fi
 
-# Detect Package Manager
-if command -v pacman &> /dev/null; then
-    DISTRO="󰣇 Arch"
-    PKG_MANAGER="pacman"
-elif command -v dnf &> /dev/null; then
-    DISTRO=" Fedora"
-    PKG_MANAGER="dnf"
-else
-    echo -e "${RED}❌ Unsupported distribution.${CLEAR}"
-    echo -e "${RED}   This script currently only supports Arch Linux (pacman) and Fedora (dnf).${CLEAR}"
-    exit 1
-fi
-
-if ! command -v steam &> /dev/null; then
-    echo -e "${RED}❌ ERROR: Steam is missing from your system.${CLEAR}"
-    echo -e "${RED}   Please install Steam first before running this installation script.${CLEAR}"
-    exit 1
-fi
-
-USER_NAME=$(id -un)
-USER_ID=$(id -u)
-
-echo -e "󰌽  Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
-
 # -------------------------------------------------------------------------
 # STEP 2: DEPENDENCIES & DRIVERS
 # -------------------------------------------------------------------------
+
+echo -e "󰌽  Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
 
 if command -v evtest &> /dev/null; then
     echo "  evtest is already installed, skipping..."
