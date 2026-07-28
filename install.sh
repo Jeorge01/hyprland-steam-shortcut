@@ -151,7 +151,13 @@ if [ "$(id -u)" = "0" ]; then
     exit 1
 fi
 
-# Detect Package Manager
+# Batch validation: systemkrav
+ERRORS=()
+
+if ! command -v systemctl &> /dev/null; then
+    ERRORS+=("systemd (systemctl) not found — krävs för systemd user service")
+fi
+
 if command -v pacman &> /dev/null; then
     DISTRO="󰣇 Arch"
     PKG_MANAGER="pacman"
@@ -159,8 +165,18 @@ elif command -v dnf &> /dev/null; then
     DISTRO=" Fedora"
     PKG_MANAGER="dnf"
 else
-    echo -e "${RED}❌ Unsupported distribution.${CLEAR}"
-    echo -e "${RED}   This script currently only supports Arch Linux (pacman) and Fedora (dnf).${CLEAR}"
+    ERRORS+=("Unsupported distribution — endast Arch (pacman) och Fedora (dnf)")
+fi
+
+if ! command -v hyprctl &> /dev/null; then
+    ERRORS+=("Hyprland (hyprctl) not found — krävs för workspace-fokus")
+fi
+
+if [ ${#ERRORS[@]} -gt 0 ]; then
+    echo -e "${RED}❌ Installation cannot continue:${CLEAR}"
+    for err in "${ERRORS[@]}"; do
+        echo -e "${RED}   • ${err}${CLEAR}"
+    done
     exit 1
 fi
 
