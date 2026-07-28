@@ -6,22 +6,22 @@ Step-by-step instructions for setting up the Steam Big Picture trigger manually.
 
 ## Prerequisites
 
-<table style="border-collapse: collapse; border: none;">
+<table border="0" cellpadding="0" cellspacing="0" rules="none">
   <tr>
-    <td align="center" style="border: none; padding: 2px 8px 2px 0;"><img src="assets/systemd.svg" height="20" style="vertical-align: middle;" /></td>
-    <td style="border: none; padding: 2px 0;"><strong>Systemd</strong> — for the background user service</td>
+    <td align="center"><img src="assets/systemd.svg" height="20" /></td>
+    <td><strong>systemd</strong> — for the background user service</td>
   </tr>
   <tr>
-    <td align="center" style="border: none; padding: 2px 8px 2px 0;"><img src="assets/archlinux.svg" height="20" style="vertical-align: middle;" /></td>
-    <td style="border: none; padding: 2px 0;"><strong>Arch Linux</strong> (pacman) or <img src="assets/fedora.svg" height="20" style="vertical-align: middle;" /> <strong>Fedora</strong> (dnf)</td>
+    <td align="center"><img src="assets/archlinux.svg" height="20" /></td>
+    <td><strong>Arch Linux</strong> (pacman) or <img src="assets/fedora.svg" height="20" /> <strong>Fedora</strong> (dnf)</td>
   </tr>
   <tr>
-    <td align="center" style="border: none; padding: 2px 8px 2px 0;"><img src="assets/hyprland.svg" height="20" style="vertical-align: middle;" /></td>
-    <td style="border: none; padding: 2px 0;"><strong>Hyprland</strong> — workspace focus and Steam window detection via <code>hyprctl</code></td>
+    <td align="center"><img src="assets/hyprland.svg" height="20" /></td>
+    <td><strong>Hyprland</strong> — workspace focus and Steam window detection via <code>hyprctl</code></td>
   </tr>
   <tr>
-    <td align="center" style="border: none; padding: 2px 8px 2px 0;"><img src="assets/steam.svg" height="20" style="vertical-align: middle;" /></td>
-    <td style="border: none; padding: 2px 0;"><strong>Steam</strong> — installed on your system</td>
+    <td align="center"><img src="assets/steam.svg" height="20" /></td>
+    <td><strong>Steam</strong> — installed on your system</td>
   </tr>
 </table>
 
