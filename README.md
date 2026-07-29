@@ -1,6 +1,6 @@
 # Hyprland Steam Shortcut
 
-Hyprland's built-in `bind` only supports keyboard keys and mouse buttons — game controllers are not distinguishable at the compositor level. This service solves that by mapping any input device button to launch Steam Big Picture Mode via raw `evtest` events outside the compositor.
+Hyprland's built-in `bind` only supports keyboard keys and mouse buttons while game controllers are not distinguishable at the compositor level. This service solves that by mapping any input device button to launch Steam Big Picture Mode via raw `evtest` events outside the compositor.
 
 <img src="https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/assets/showcase.png" width="2560" height="1440" alt="Showcase" />
 
@@ -17,15 +17,15 @@ Hyprland's built-in `bind` only supports keyboard keys and mouse buttons — gam
 ## Requirements
 <p>
   <img src="assets/systemd.svg" width="20" height="20" align="left" />
-  <strong>systemd</strong> — for the background user service
+  <strong>Systemd</strong> - for the background user service
 </p>
 <p>
   <img src="assets/hyprland.svg" width="20" height="20" align="left" />
-  <strong>Hyprland</strong> — workspace focus and Steam window detection via <code>hyprctl</code>
+  <strong>Hyprland</strong> - desktop / window manager
 </p>
 <p>
   <img src="assets/steam.svg" width="20" height="20" align="left" />
-  <strong>Steam</strong> — installed on your system
+  <strong>Steam</strong> - installed on your system
 </p>
 
 ## Installation
@@ -52,7 +52,7 @@ chmod +x install.sh
 
 ## Why This Exists
 
-Hyprland's input system — like all Wayland compositors built on libinput — treats game controllers as keyboards. They register as `*-keyboard` devices with no reliable way to distinguish them from a real keyboard at the compositor level.
+Hyprland's input system, like all Wayland compositors built on libinput, treats game controllers as keyboards. They register as `*-keyboard` devices with no reliable way to distinguish them from a real keyboard at the compositor level.
 
 In [Hyprland#1211](https://github.com/hyprwm/Hyprland/issues/1211), **vaxerski** said:
 
@@ -68,8 +68,8 @@ This project works around both limitations by reading raw input events via `evte
 
 When you run the installer, you'll see an interactive menu powered by [gum](https://github.com/charmbracelet/gum):
 
-- **Bind device** — Calibrate and install the button trigger
-- **Unbind** — Remove the installation completely (service, sudoers, scripts, logs)
+- **Bind device** - Calibrate and install the button trigger
+- **Unbind** - Remove the installation completely (service, sudoers, scripts, logs)
 
 `gum` is automatically installed if missing.
 

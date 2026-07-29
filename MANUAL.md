@@ -17,15 +17,15 @@ Step-by-step instructions for setting up the Steam Big Picture trigger manually.
 ## Prerequisites
 <p>
   <img src="assets/systemd.svg" width="20" height="20" align="left" />
-  <strong>systemd</strong> — for the background user service
+  <strong>Systemd</strong> - for the background user service
 </p>
 <p>
   <img src="assets/hyprland.svg" width="20" height="20" align="left" />
-  <strong>Hyprland</strong> — workspace focus and Steam window detection via <code>hyprctl</code>
+  <strong>Hyprland</strong> - desktop / window manager
 </p>
 <p>
   <img src="assets/steam.svg" width="20" height="20" align="left" />
-  <strong>Steam</strong> — installed on your system
+  <strong>Steam</strong> - installed on your system
 </p>
 
 ## 1. Install Dependencies
