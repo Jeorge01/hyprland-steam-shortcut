@@ -4,26 +4,29 @@ Step-by-step instructions for setting up the Steam Big Picture trigger manually.
 
 ---
 
-## Prerequisites
+## Supported Distros
+<p>
+  <img src="assets/archlinux.svg" width="20" height="20" align="left" />
+  <strong>Arch Linux</strong> (pacman) 
+</p>
+<p>
+  <img src="assets/fedora.svg" width="20" height="20" align="left" />
+  <strong>Fedora</strong> (dnf)
+</p>
 
-<table border="0" cellpadding="0" cellspacing="0" rules="none">
-  <tr>
-    <td align="center"><img src="assets/systemd.svg" height="20" /></td>
-    <td><strong>systemd</strong> — for the background user service</td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/archlinux.svg" height="20" /></td>
-    <td><strong>Arch Linux</strong> (pacman) or <img src="assets/fedora.svg" height="20" /> <strong>Fedora</strong> (dnf)</td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/hyprland.svg" height="20" /></td>
-    <td><strong>Hyprland</strong> — workspace focus and Steam window detection via <code>hyprctl</code></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/steam.svg" height="20" /></td>
-    <td><strong>Steam</strong> — installed on your system</td>
-  </tr>
-</table>
+## Prerequisites
+<p>
+  <img src="assets/systemd.svg" width="20" height="20" align="left" />
+  <strong>systemd</strong> — for the background user service
+</p>
+<p>
+  <img src="assets/hyprland.svg" width="20" height="20" align="left" />
+  <strong>Hyprland</strong> — workspace focus and Steam window detection via <code>hyprctl</code>
+</p>
+<p>
+  <img src="assets/steam.svg" width="20" height="20" align="left" />
+  <strong>Steam</strong> — installed on your system
+</p>
 
 ## 1. Install Dependencies
 
