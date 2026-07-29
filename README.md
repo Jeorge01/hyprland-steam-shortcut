@@ -1,6 +1,6 @@
 # Hyprland Steam Shortcut
 
-Automated background service that maps any designated device input to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
+Hyprland's built-in `bind` only supports keyboard keys and mouse buttons — game controllers are not distinguishable at the compositor level. This service solves that by mapping any input device button to launch Steam Big Picture Mode via raw `evtest` events outside the compositor.
 
 <img src="https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/assets/showcase.png" width="2560" height="1440" alt="Showcase" />
 
@@ -49,7 +49,22 @@ cd hyprland-steam-shortcut
 chmod +x install.sh
 ./install.sh
 ```
-### Interactive Menu
+
+## Why This Exists
+
+Hyprland's input system — like all Wayland compositors built on libinput — treats game controllers as keyboards. They register as `*-keyboard` devices with no reliable way to distinguish them from a real keyboard at the compositor level.
+
+In [Hyprland#1211](https://github.com/hyprwm/Hyprland/issues/1211), **vaxerski** said:
+
+> *"I am unsure how I would distinguish controllers from keyboards / mice. I think they're just plain old keyboards?"*
+
+Even if detection were possible, games typically open the joystick device directly (`/dev/input/js*`) without going through the compositor at all. As **gulafaran** noted:
+
+> *"Some apps/games open the joystick device directly without even going through the compositor [...] which is why most compositors lack this feature."*
+
+This project works around both limitations by reading raw input events via `evtest` directly from `/dev/input/event*`, outside the compositor, and triggering Steam Big Picture Mode through a background systemd user service.
+
+## Interactive Menu
 
 When you run the installer, you'll see an interactive menu powered by [gum](https://github.com/charmbracelet/gum):
 
