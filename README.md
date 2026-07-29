@@ -2,7 +2,7 @@
 
 Automated background service that maps any designated device input to launch Steam Big Picture Mode globally in a Hyprland/Wayland session.
 
-![Showcase](assets/showcase.png)
+<img src="https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/assets/showcase.png" width="2560" height="1440" alt="Showcase" />
 
 ## Requirements
 
@@ -55,7 +55,9 @@ When you run the installer, you'll see an interactive menu powered by [gum](http
 
 `gum` is automatically installed if missing.
 
-For a step-by-step manual installation, see [MANUAL.md](MANUAL.md).
+For a step-by-step manual installation:
+
+**[<kbd> <br> Manual <br> </kbd>](MANUAL.md)**
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
