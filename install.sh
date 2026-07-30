@@ -332,6 +332,7 @@ trap restore_service INT TERM
 # -------------------------------------------------------------------------
 # COMBO-AWARE CALIBRATION (2-fas evtest)
 # -------------------------------------------------------------------------
+calibrate() {
 while true; do
 if [ "${IS_REDO:-0}" -eq 0 ]; then
 echo ""
@@ -594,6 +595,9 @@ fi
 
 break
 done
+}
+
+calibrate
 
 trap - INT TERM
 echo "─────────────────────────────────────────"
