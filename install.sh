@@ -141,8 +141,16 @@ cleanup() {
 
     if [ -f /tmp/xbox-steam-calibrating ]; then
         rm -f /tmp/xbox-steam-calibrating
+        echo ""
         if [ "${SERVICE_WAS_ACTIVE:-0}" -eq 1 ]; then
+            echo -e "${YELLOW}Calibration aborted. Restoring previous binds...${CLEAR}"
             systemctl --user start xbox-steam.service 2>/dev/null || true
+            echo -e "${GREEN}Previous binds restored.${CLEAR}"
+        else
+            echo -e "${YELLOW}Calibration aborted.${CLEAR}"
+        fi
+        if [ "${INPUT_REMAPPER_WAS_ACTIVE:-0}" -eq 1 ]; then
+            sudo systemctl start input-remapper 2>/dev/null || true
         fi
     fi
 
@@ -296,7 +304,9 @@ fi
 # -------------------------------------------------------------------------
 # Stop input-remapper temporarily (it grabs all input devices and blocks evtest)
 # -------------------------------------------------------------------------
+INPUT_REMAPPER_WAS_ACTIVE=0
 if systemctl is-active --quiet input-remapper 2>/dev/null; then
+    INPUT_REMAPPER_WAS_ACTIVE=1
     echo "⏸  input-remapper is running — stopping temporarily for calibration..."
     sudo systemctl stop input-remapper
 fi
@@ -312,22 +322,6 @@ if systemctl --user is-active --quiet xbox-steam.service 2>/dev/null; then
     sudo pkill -f "[e]vtest" 2>/dev/null || true
 fi
 touch /tmp/xbox-steam-calibrating
-
-restore_service() {
-    printf '\033[?25h' >/dev/tty
-    stty echo </dev/tty 2>/dev/null || true
-    echo ""
-    rm -f /tmp/xbox-steam-calibrating
-    if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
-        echo -e "${YELLOW}Calibration aborted. Restoring previous binds...${CLEAR}"
-        systemctl --user start xbox-steam.service 2>/dev/null || true
-        echo -e "${GREEN}Previous binds restored.${CLEAR}"
-    else
-        echo -e "${YELLOW}Calibration aborted.${CLEAR}"
-    fi
-    exit 0
-}
-trap restore_service INT TERM
 
 # -------------------------------------------------------------------------
 # COMBO-AWARE CALIBRATION (2-fas evtest)
@@ -598,6 +592,11 @@ done
 }
 
 calibrate
+
+if [ "$INPUT_REMAPPER_WAS_ACTIVE" -eq 1 ]; then
+    echo "  Restoring input-remapper..."
+    sudo systemctl start input-remapper 2>/dev/null || true
+fi
 
 trap - INT TERM
 echo "─────────────────────────────────────────"
