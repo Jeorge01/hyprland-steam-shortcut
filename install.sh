@@ -824,7 +824,9 @@ WantedBy=default.target
 EOF
 
 log_info "Reloading systemd configuration..."
-run_cmd systemctl --user daemon-reload
+if ! run_cmd systemctl --user daemon-reload; then
+    log_info "[!] Failed to reload systemd configuration."
+fi
 
 log_info "Enabling service for automatic boot..."
 systemctl --user disable xbox-steam.service &>/dev/null
