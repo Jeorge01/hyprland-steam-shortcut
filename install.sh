@@ -4,7 +4,7 @@
 set -e
 
 # Version (auto-detected from file modification date)
-VERSION=$(stat -c %y "$0" 2>/dev/null | cut -d' ' -f1 || echo "unknown")
+VERSION=$(date -r "$0" "+%Y-%m-%d" 2>/dev/null || echo "unknown")
 
 HYPR_BLUE=$'\e[38;2;94;204;227m'
 HYPR_DARK_BLUE=$'\e[38;2;85;184;204m'
