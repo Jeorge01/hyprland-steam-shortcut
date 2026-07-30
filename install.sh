@@ -540,16 +540,24 @@ else
     CHECK_BTN_NAME="$TARGET_BTN_NAME"
 fi
 
-if echo "$BLACKLISTED_CODES" | grep -qw "$CHECK_BTN_CODE"; then
-    echo -e ""
-    echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
-    echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${CHECK_BTN_NAME}${CLEAR}' (code ${WHITE}${CHECK_BTN_CODE}${CLEAR}) is blacklisted.                ${RED}│${CLEAR}"
-    echo -e "${RED}│${CLEAR}    Binding this button would interfere with normal input.       ${RED}│${CLEAR}"
-    echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
-    echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
-    echo -e ""
-    exit 1
-fi
+for code in "$CHECK_BTN_CODE" "${MODIFIER_BTN_CODE:-}"; do
+    [ -z "$code" ] && continue
+    if echo "$BLACKLISTED_CODES" | grep -qw "$code"; then
+        if [ "$code" = "$CHECK_BTN_CODE" ]; then
+            name="$CHECK_BTN_NAME"
+        else
+            name="$MODIFIER_BTN_NAME"
+        fi
+        echo -e ""
+        echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
+        echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${name}${CLEAR}' (code ${WHITE}${code}${CLEAR}) is blacklisted.                ${RED}│${CLEAR}"
+        echo -e "${RED}│${CLEAR}    Binding this button would interfere with normal input.       ${RED}│${CLEAR}"
+        echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
+        echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+        echo -e ""
+        exit 1
+    fi
+done
 
 echo ""
 BIND_CONFIRM=""
