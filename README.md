@@ -75,16 +75,16 @@ This project works around both limitations by reading raw input events via `evte
 
 ## Interactive Menu
 
-When you run the installer, you'll see an interactive menu powered by [gum](https://github.com/charmbracelet/gum):
+When you run the installer, you'll see an interactive menu with two options:
 
 - **Bind device** - Calibrate and install the button trigger
 - **Unbind** - Remove the installation completely (service, sudoers, scripts, logs)
 
-`gum` is automatically installed if missing.
+Behind the scenes, the installer uses [`evtest`][evtest] to capture raw input events and [`gum`][gum] for the interactive prompts — both are automatically installed if missing.
 
-For a step-by-step manual installation:
-
-**[<kbd> <br> Manual <br> </kbd>](MANUAL.md)**
+<a href="MANUAL.md" target="_blank"><kbd> <br> Manual <br> </kbd></a>
+<a href="https://gitlab.freedesktop.org/libevdev/evtest" target="_blank"><kbd> <br> evtest <br> </kbd></a>
+<a href="https://github.com/charmbracelet/gum" target="_blank"><kbd> <br> gum <br> </kbd></a>
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
