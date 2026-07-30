@@ -136,6 +136,17 @@ while true; do sudo -n true; sleep 10; kill -0 "$$" || exit; done 2>/dev/null &
 SUDO_KEEP_ALIVE_PID=$!
 
 cleanup() {
+    printf '\033[?25h' >/dev/tty 2>/dev/null || true
+    stty echo </dev/tty 2>/dev/null || true
+
+    if [ -f /tmp/xbox-steam-calibrating ]; then
+        rm -f /tmp/xbox-steam-calibrating
+        if [ "${SERVICE_WAS_ACTIVE:-0}" -eq 1 ]; then
+            systemctl --user start xbox-steam.service 2>/dev/null || true
+        fi
+    fi
+
+    kill $(jobs -p) 2>/dev/null || true
     kill "$SUDO_KEEP_ALIVE_PID" 2>/dev/null || true
 }
 
