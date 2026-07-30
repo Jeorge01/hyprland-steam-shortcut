@@ -800,7 +800,7 @@ fi
 
 echo "  Adding sudoers rule for evtest..."
 SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
-echo "$(id -un) ALL=(ALL) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
+echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
 sudo chmod 440 "$SU_FILE"
 
 mkdir -p "$HOME/.config/systemd/user"
