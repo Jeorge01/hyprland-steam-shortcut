@@ -287,7 +287,7 @@ if [ -f "/etc/modules-load.d/xpad.conf" ]; then
 else
     if ! lsmod | grep -q "xpad"; then
         echo "Loading xpad into the kernel..."
-        sudo modprobe xpad || true
+        sudo modprobe xpad || log_info "[!] Failed to load xpad module"
     fi
     echo "Setting xpad to load automatically on boot..."
     echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf > /dev/null
