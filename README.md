@@ -35,6 +35,8 @@ Hyprland's built-in `bind` only supports keyboard keys and mouse buttons while g
   <strong>Steam</strong> - installed on your system
 </p>
 
+<br>
+
 ## Installation
 
 You can install or update the shortcut trigger automatically using the following command.
