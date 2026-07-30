@@ -678,10 +678,10 @@ if [ "\$1" == "listen" ]; then
                     done
                 ) &
                 LISTENER_PIDS="\$LISTENER_PIDS \$!"
-                echo "\$LISTENER_PIDS" > /tmp/xbox-steam-pids.txt
             fi
         done
-
+        echo "\$LISTENER_PIDS" > /tmp/xbox-steam-pids.txt
+        
         while true; do
             sleep 2
             STILL_CONNECTED=1
