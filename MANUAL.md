@@ -61,7 +61,7 @@ echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf
 The listener runs as a user service but needs root to read `/dev/input/event*`. Add a sudoers exception:
 
 ```bash
-echo "$(id -un) ALL=(ALL) NOPASSWD: /usr/bin/evtest" | sudo tee /etc/sudoers.d/xbox-steam-evtest
+echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest" | sudo tee /etc/sudoers.d/xbox-steam-evtest
 sudo chmod 440 /etc/sudoers.d/xbox-steam-evtest
 ```
 
@@ -91,187 +91,43 @@ For a two-button combo (hold one button, press another), you need codes and name
 
 ## 4. Create the Automation Script
 
-Create `~/run_steam.sh`:
+The trigger script (`run_steam.sh`) reads configuration from `~/.config/steam-shortcut/config`.
+
+### Configuration File
+
+Create the config file with your calibration values:
 
 ```bash
-nano ~/run_steam.sh
+mkdir -p ~/.config/steam-shortcut
+nano ~/.config/steam-shortcut/config
 ```
 
-Paste the script below and update the configuration block with your values:
-
-```bash
-#!/bin/bash
-
-# === CONFIGURATION ===
+```ini
 USER_NAME="$(whoami)"
 TARGET_DEV_NAME="Microsoft X-Box 360 pad"
-
-# Single mode: the button that triggers Steam
+BIND_MODE="single"
 TARGET_BTN_CODE="316"
 TARGET_BTN_NAME="BTN_MODE"
 
-# Combo mode: modifier + trigger
-BIND_MODE="single"                           # "single" or "combo"
-MODIFIER_BTN_CODE="316"
-MODIFIER_BTN_NAME="BTN_MODE"
-TRIGGER_BTN_CODE="317"
-TRIGGER_BTN_NAME="BTN_TRIGGER"
-# =====================
-
-SCRIPT_PATH="$(realpath "$0")"
-
-if [ "$1" == "listen" ]; then
-    echo "Starting listener..."
-
-    while true; do
-        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
-            echo "Waiting for your specific controller ($TARGET_DEV_NAME) to initialize..."
-            sleep 2
-        done
-
-        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-
-        for NUM in $EVENT_NUMS; do
-            until [ -r "/dev/input/event$NUM" ]; do
-                echo "Waiting for /dev/input/event$NUM to become readable..."
-                sleep 0.2
-            done
-        done
-
-        echo "Your calibrated device is ready! Initializing listener..."
-
-        if systemctl is-active --quiet input-remapper 2>/dev/null; then
-            echo "WARNING: input-remapper is running and may block button detection"
-            echo "   Run: sudo systemctl stop input-remapper"
-        fi
-
-        echo "" > /tmp/xbox-steam-pids.txt
-        LISTENER_PIDS=""
-
-        for NUM in $EVENT_NUMS; do
-            if [ -e "/dev/input/event$NUM" ]; then
-                echo "Listening on /dev/input/event$NUM"
-                (
-                    sudo evtest /dev/input/event$NUM 2>/dev/null | while read -r line; do
-                        if [ "$BIND_MODE" = "combo" ]; then
-                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
-                                MODIFIER_HELD=1
-                            fi
-                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 0"; then
-                                MODIFIER_HELD=0
-                            fi
-                            if echo "$line" | grep -q "code $TRIGGER_BTN_CODE.*value 1"; then
-                                if [ "${MODIFIER_HELD:-0}" -eq 1 ]; then
-                                    MODIFIER_HELD=0
-                                    /bin/bash "$SCRIPT_PATH" trigger &
-                                fi
-                            fi
-                        else
-                            if echo "$line" | grep -q "code $TARGET_BTN_CODE ($TARGET_BTN_NAME), value 1"; then
-                                /bin/bash "$SCRIPT_PATH" trigger &
-                            fi
-                        fi
-                    done
-                ) &
-                LISTENER_PIDS="$LISTENER_PIDS $!"
-                echo "$LISTENER_PIDS" > /tmp/xbox-steam-pids.txt
-            fi
-        done
-
-        while true; do
-            sleep 2
-            STILL_CONNECTED=1
-
-            for NUM in $EVENT_NUMS; do
-                if [ ! -e "/dev/input/event$NUM" ]; then
-                    STILL_CONNECTED=0
-                    break
-                fi
-            done
-
-            if [ $STILL_CONNECTED -eq 0 ]; then
-                echo "Device disconnected! Re-scanning..."
-                for pid in $LISTENER_PIDS; do
-                    kill $pid 2>/dev/null
-                done
-                break
-            fi
-        done
-    done
-    exit 0
-fi
-
-# --- TRIGGER EXECUTION ---
-if [ "$1" == "trigger" ]; then
-    exec >> "$HOME/steam_error.log" 2>&1
-    echo "========================================="
-    echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
-    echo "Timestamp: $(date)"
-    echo "-----------------------------------------"
-
-    export WAYLAND_DISPLAY=$(systemctl --user show-environment | grep '^WAYLAND_DISPLAY=' | cut -d= -f2)
-    export DISPLAY=$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-
-    if [ -z "$WAYLAND_DISPLAY" ]; then
-        COMPOSITOR_PID=$(pgrep -u "$USER" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
-        if [ -n "$COMPOSITOR_PID" ]; then
-            export WAYLAND_DISPLAY=$(grep -z '^WAYLAND_DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-            export DISPLAY=$(grep -z '^DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-            export HYPRLAND_INSTANCE_SIGNATURE=$(grep -z '^HYPRLAND_INSTANCE_SIGNATURE=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-        fi
-    fi
-
-    [ -z "$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY="wayland-0"
-    [ -z "$DISPLAY" ] && export DISPLAY=":0"
-
-    CURRENT_ACTIVE_WS=$(hyprctl monitors | awk '/active workspace:/ {print $3; exit}')
-    TARGET_WORKSPACE=${CURRENT_ACTIVE_WS:-"1"}
-
-    PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
-
-    if [ -n "$PID_LIST" ]; then
-        STEAM_WS=$(hyprctl clients | awk '
-            /^Window/ {
-                if (is_steam && ws != "") { last_steam_ws = ws }
-                is_steam = 0
-                ws = ""
-            }
-            /workspace:/ { ws = $2 }
-            /class: [Ss]team/ { is_steam = 1 }
-            END {
-                if (is_steam && ws != "") { last_steam_ws = ws }
-                print (last_steam_ws != "") ? last_steam_ws : "unknown"
-            }
-        ')
-
-        if [ -n "$STEAM_WS" ] && [ "$STEAM_WS" -eq "$STEAM_WS" ] 2>/dev/null; then
-            TARGET_WORKSPACE="$STEAM_WS"
-        fi
-    else
-        echo "Steam is not running. It will be launched on the current workspace ($TARGET_WORKSPACE)."
-    fi
-
-    hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $TARGET_WORKSPACE }))"
-    hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
-    hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" 2>/dev/null || true
-
-    if [ -n "$PID_LIST" ]; then
-        steam steam://open/bigpicture >/dev/null 2>&1 &
-    else
-        systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
-    fi
-
-    echo "=== TRIGGER COMPLETE ==="
-    echo "========================================="
-fi
+# Combo mode (uncomment if using combo):
+# MODIFIER_BTN_CODE="316"
+# MODIFIER_BTN_NAME="BTN_MODE"
+# TRIGGER_BTN_CODE="317"
+# TRIGGER_BTN_NAME="BTN_TRIGGER"
 ```
 
-Save and make it executable:
+### Download the Trigger Script
 
 ```bash
+curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/run_steam.sh -o ~/run_steam.sh
 chmod +x ~/run_steam.sh
 ```
+
+> If you cloned the repository, copy the file instead:
+> ```bash
+> cp /path/to/repo/run_steam.sh ~/run_steam.sh
+> chmod +x ~/run_steam.sh
+> ```
 
 ---
 
@@ -290,7 +146,7 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash %h/run_steam.sh listen
-ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "$pid_file" ]; then xargs kill -9 < "$pid_file" 2>/dev/null; rm -f "$pid_file"; fi'
+ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "$pid_file" ]; then xargs kill < "$pid_file" 2>/dev/null; rm -f "$pid_file"; fi'
 KillMode=process
 Restart=always
 RestartSec=5
