@@ -37,11 +37,11 @@ Hyprland's built-in `bind` only supports keyboard keys and mouse buttons while g
 
 <br>
 
-## Installation
+# Installation
 
 You can install or update the shortcut trigger automatically using the following command.
 
-### One-line Installer (Recommended)
+### Quick Installation (Recommended)
 Open your terminal and run (works on both Arch Linux and Fedora):
 
 ```bash
