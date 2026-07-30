@@ -4,6 +4,13 @@ Hyprland's built-in `bind` only supports keyboard keys and mouse buttons while g
 
 <img src="https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/assets/showcase.png" width="2560" height="1440" alt="Showcase" />
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat&logo=bookstack&logoColor=white" alt="License"></a>
+  <img src="https://img.shields.io/badge/language-Shell_Script-4EAA25?style=flat&logo=gnubash&logoColor=white" alt="Language">
+  <img src="https://img.shields.io/badge/platform-Linux-00C474?style=flat&logo=linux&logoColor=white" alt="Platform">
+  <a href="https://github.com/Jeorge01/hyprland-steam-shortcut/commits/main"><img src="https://img.shields.io/github/last-commit/Jeorge01/hyprland-steam-shortcut?style=flat&label=last%20update&color=informational" alt="Last Commit"></a>
+</p>
+
 ## Supported Distros
 <p>
   <img src="assets/archlinux.svg" width="20" height="20" align="left" />
