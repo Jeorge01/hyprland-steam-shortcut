@@ -251,7 +251,7 @@ if [[ "$CHOICE" == *"Unbind"* ]]; then
     rm -f "$HOME/steam_error.log"
     
     if [ -f /tmp/xbox-steam-pids.txt ]; then
-        xargs kill -9 < /tmp/xbox-steam-pids.txt 2>/dev/null || true
+        xargs kill < /tmp/xbox-steam-pids.txt 2>/dev/null || true
         rm -f /tmp/xbox-steam-pids.txt
     fi
     
@@ -309,7 +309,7 @@ if systemctl --user is-active --quiet xbox-steam.service 2>/dev/null; then
     SERVICE_WAS_ACTIVE=1
     log_info "Pausing active binds for calibration..."
     systemctl --user stop xbox-steam.service 2>/dev/null || true
-    sudo pkill -9 -f "[e]vtest" 2>/dev/null || true
+    sudo pkill -f "[e]vtest" 2>/dev/null || true
 fi
 touch /tmp/xbox-steam-calibrating
 
@@ -814,7 +814,7 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash $HOME/run_steam.sh listen
-ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "\$pid_file" ]; then xargs kill -9 < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi'
+ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "\$pid_file" ]; then xargs kill < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi'
 KillMode=process
 Restart=always
 RestartSec=5
