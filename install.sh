@@ -678,7 +678,7 @@ if [ "\$1" == "listen" ]; then
                                 fi
                             fi
                         else
-                            if echo "\$line" | grep -q "code \$TARGET_BTN_CODE (\$TARGET_BTN_NAME), value 1"; then
+                            if echo "\$line" | grep -q "code \$TARGET_BTN_CODE.*value 1"; then
                                 echo "[DEBUG-SINGLE] Single trigger fired!" >> "\$HOME/steam_error.log"
                                 /bin/bash "\$SCRIPT_PATH" trigger &
                             fi
