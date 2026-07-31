@@ -1,24 +1,33 @@
 #!/bin/bash
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/steam-shortcut"
-CONFIG_FILE="$CONFIG_DIR/config"
-
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-else
-    echo "Error: Config file not found at $CONFIG_FILE" >&2
-    echo "Run install.sh to generate configuration." >&2
-    exit 1
-fi
-
 SCRIPT_PATH="$(realpath "$0")"
 
+if [ -f "$CONFIG_DIR/config" ]; then
+    source "$CONFIG_DIR/config"
+fi
+
 if [ "$1" == "listen" ]; then
-    echo "Starting listener..."
+    DEVICE_ID="${2:-}"
+    if [ -z "$DEVICE_ID" ]; then
+        echo "Error: missing device id. Usage: run_steam.sh listen <device-id>" >&2
+        exit 1
+    fi
+
+    CONFIG_FILE="$CONFIG_DIR/devices/$DEVICE_ID.conf"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Error: Config file not found at $CONFIG_FILE" >&2
+        exit 1
+    fi
+    source "$CONFIG_FILE"
+
+    PID_FILE="/tmp/xbox-steam-$DEVICE_ID-pids.txt"
+
+    echo "Starting listener for $TARGET_DEV_NAME ($DEVICE_ID)..."
 
     while true; do
         until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
-            echo "Waiting for your specific controller ($TARGET_DEV_NAME) to initialize..."
+            echo "Waiting for your controller ($TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
 
@@ -38,7 +47,7 @@ if [ "$1" == "listen" ]; then
             echo "   Run: sudo systemctl stop input-remapper"
         fi
 
-        echo "" > /tmp/xbox-steam-pids.txt
+        echo "" > "$PID_FILE"
         LISTENER_PIDS=""
 
         for NUM in $EVENT_NUMS; do
@@ -47,29 +56,21 @@ if [ "$1" == "listen" ]; then
                 (
                     sudo evtest /dev/input/event$NUM 2>/dev/null | while read -r line; do
                         [ -f /tmp/xbox-steam-calibrating ] && continue
-                        echo "[DEBUG-EV] $line" >> "$HOME/steam_error.log"
                         if [ "$BIND_MODE" = "combo" ]; then
                             if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
                                 MODIFIER_HELD=1
-                                echo "[DEBUG-COMBO] Modifier $MODIFIER_BTN_NAME HELD (code $MODIFIER_BTN_CODE)" >> "$HOME/steam_error.log"
                             fi
                             if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 0"; then
                                 MODIFIER_HELD=0
-                                echo "[DEBUG-COMBO] Modifier $MODIFIER_BTN_NAME RELEASED" >> "$HOME/steam_error.log"
                             fi
                             if echo "$line" | grep -q "code $TRIGGER_BTN_CODE.*value 1"; then
-                                echo "[DEBUG-COMBO] Trigger $TRIGGER_BTN_NAME detected! MODIFIER_HELD=${MODIFIER_HELD:-0}" >> "$HOME/steam_error.log"
                                 if [ "${MODIFIER_HELD:-0}" -eq 1 ]; then
                                     MODIFIER_HELD=0
-                                    echo "[DEBUG-COMBO] >>> COMBO FIRE <<<" >> "$HOME/steam_error.log"
                                     /bin/bash "$SCRIPT_PATH" trigger &
-                                else
-                                    echo "[DEBUG-COMBO] Trigger IGNORED (modifier not held)" >> "$HOME/steam_error.log"
                                 fi
                             fi
                         else
                             if echo "$line" | grep -q "code $TARGET_BTN_CODE.*value 1"; then
-                                echo "[DEBUG-SINGLE] Single trigger fired!" >> "$HOME/steam_error.log"
                                 /bin/bash "$SCRIPT_PATH" trigger &
                             fi
                         fi
@@ -78,26 +79,22 @@ if [ "$1" == "listen" ]; then
                 LISTENER_PIDS="$LISTENER_PIDS $!"
             fi
         done
-        echo "$LISTENER_PIDS" > /tmp/xbox-steam-pids.txt
+        echo "$LISTENER_PIDS" > "$PID_FILE"
 
         while true; do
             sleep 2
             STILL_CONNECTED=1
-
             for NUM in $EVENT_NUMS; do
                 if [ ! -e "/dev/input/event$NUM" ]; then
                     STILL_CONNECTED=0
                     break
                 fi
             done
-
             if [ $STILL_CONNECTED -eq 0 ]; then
                 echo "⚠️ Device disconnected! Cleaning up background processes..."
-
                 for pid in $LISTENER_PIDS; do
                     kill $pid 2>/dev/null
                 done
-
                 echo "  Re-scanning hardware..."
                 break
             fi
@@ -108,6 +105,7 @@ fi
 
 # --- TRIGGER EXECUTION ---
 if [ "$1" == "trigger" ]; then
+    USER_NAME="${USER_NAME:-$(id -un)}"
     [ -f /tmp/xbox-steam-calibrating ] && exit 0
     [ -f "$HOME/steam_error.log" ] && [ $(stat -c%s "$HOME/steam_error.log" 2>/dev/null || echo 0) -gt 524288 ] && mv "$HOME/steam_error.log" "$HOME/steam_error.log.old"
 
