@@ -243,11 +243,6 @@ uninstall_all() {
 
     if ! confirm "Are you sure?"; then
         echo -e "${YELLOW}Aborted.${CLEAR}"
-        echo ""
-        echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
-        printf '\033[?25l' >/dev/tty
-        read -r -s -n1 </dev/tty || true
-        printf '\033[?25h' >/dev/tty
         return 0
     fi
 
