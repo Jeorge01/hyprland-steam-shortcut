@@ -243,6 +243,11 @@ uninstall_all() {
 
     if ! confirm "Are you sure?"; then
         echo -e "${YELLOW}Aborted.${CLEAR}"
+        echo ""
+        echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+        printf '\033[?25l' >/dev/tty
+        read -r -s -n1 </dev/tty || true
+        printf '\033[?25h' >/dev/tty
         return 0
     fi
 
@@ -341,6 +346,9 @@ device_menu() {
         printf '\033[H' >/dev/tty
         banner_bound_devices >/dev/tty
         for i in "${!it[@]}"; do
+            if [ "$i" -eq $((count - 1)) ]; then
+                echo "" >/dev/tty
+            fi
             if [ "$i" -eq "$sel" ]; then
                 selected=1
             else
@@ -441,7 +449,6 @@ manage_binds() {
             items+=("$(bind_status "$id" "$conf")")
             ids+=("$id")
         done
-        items[${#items[@]}-1]+=$'\n'
 
         local choice
         choice=$(device_menu "${items[@]}" "⟵ Back")
@@ -923,7 +930,44 @@ fi
 # -------------------------------------------------------------------------
 # CALIBRATION
 # -------------------------------------------------------------------------
+
+# Spawnar evtest för alla (eller den givna) enheterna. Körs före
+# bekräftelsedialogen så att evtest-uppstarten är dold bakom dialogen — en
+# knapptryckning direkt efter "Calibrate" fångas då utan fördröjning.
+# Sätter CALIB_EVTEST (tempfil) och DEV_COUNT (antal spawnade enheter).
+# Returnerar 1 om en given enhet inte är ansluten.
+spawn_calib_evtest() {
+    CALIB_EVTEST=$(mktemp)
+    DEV_COUNT=0
+    if [ -n "$FIXED_DEVICE_ID" ]; then
+        FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
+        [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
+        FIXED_EVENTS=$(awk -v name="$FIXED_NAME" 'index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices)
+        if [ -z "$FIXED_EVENTS" ]; then
+            echo ""
+            echo -e "${RED}❌ ERROR: Device '$FIXED_NAME' is not connected.${CLEAR}"
+            echo -e "${RED}   Connect the device and try rebinding again.${CLEAR}"
+            return 1
+        fi
+        for evnode in $FIXED_EVENTS; do
+            if [ -e "/dev/input/$evnode" ]; then
+                sudo stdbuf -oL timeout 130 evtest "/dev/input/$evnode" 2>/dev/null | stdbuf -oL sed "s|^|/dev/input/$evnode: |" >> "$CALIB_EVTEST" &
+                DEV_COUNT=$((DEV_COUNT + 1))
+            fi
+        done
+    else
+        for ev in /dev/input/event*; do
+            if [ -r "$ev" ] || [ "$(id -u)" = "0" ] || command -v sudo &>/dev/null; then
+                sudo stdbuf -oL timeout 130 evtest "$ev" 2>/dev/null | stdbuf -oL sed "s|^|$ev: |" >> "$CALIB_EVTEST" &
+                DEV_COUNT=$((DEV_COUNT + 1))
+            fi
+        done
+    fi
+    return 0
+}
+
 calibrate() {
+IS_REDO=0
 while true; do
 if [ "${IS_REDO:-0}" -eq 0 ]; then
 echo ""
@@ -938,6 +982,11 @@ else
     echo -e "   Supports ${YELLOW}single${CLEAR} or ${YELLOW}combo${CLEAR} binds (hold first button + press second)."
 fi
 echo ""
+set +e
+if ! spawn_calib_evtest; then
+    set -e
+    return 1
+fi
 if command -v gum &>/dev/null; then
     if ! gum confirm "Ready to calibrate?" \
         --affirmative " Calibrate " \
@@ -949,6 +998,9 @@ if command -v gum &>/dev/null; then
         --unselected.background "#2A2A2A" \
         </dev/tty; then
         echo -e "${YELLOW}   Aborted.${CLEAR}"
+        kill $(jobs -p) 2>/dev/null || true
+        rm -f "$CALIB_EVTEST"
+        set -e
         return 2
     fi
 else
@@ -956,40 +1008,59 @@ else
     read -r r </dev/tty
     if [[ ! "$r" =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}   Aborted.${CLEAR}"
+        kill $(jobs -p) 2>/dev/null || true
+        rm -f "$CALIB_EVTEST"
+        set -e
         return 2
     fi
 fi
 echo ""
-fi
-
-CALIB_EVTEST=$(mktemp)
-
-set +e
-if [ -n "$FIXED_DEVICE_ID" ]; then
-    FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
-    FIXED_EVENTS=$(awk -v name="$FIXED_NAME" 'index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices)
-    if [ -z "$FIXED_EVENTS" ]; then
-        echo ""
-        echo -e "${RED}❌ ERROR: Device '$FIXED_NAME' is not connected.${CLEAR}"
-        echo -e "${RED}   Connect the device and try rebinding again.${CLEAR}"
-        return 1
-    fi
-    for evnode in $FIXED_EVENTS; do
-        if [ -e "/dev/input/$evnode" ]; then
-            sudo stdbuf -oL timeout 70 evtest "/dev/input/$evnode" 2>/dev/null | stdbuf -oL sed "s|^|/dev/input/$evnode: |" >> "$CALIB_EVTEST" &
-        fi
-    done
 else
-    for ev in /dev/input/event*; do
-        if [ -r "$ev" ] || [ "$(id -u)" = "0" ] || command -v sudo &>/dev/null; then
-            sudo stdbuf -oL timeout 70 evtest "$ev" 2>/dev/null | stdbuf -oL sed "s|^|$ev: |" >> "$CALIB_EVTEST" &
-        fi
-    done
+set +e
+if ! spawn_calib_evtest; then
+    set -e
+    return 1
 fi
+fi
+
+# Vänta tills alla evtest-processer öppnat sina enheter (max 3s). På första
+# körningen är uppstarten redan dold bakom bekräftelsedialogen — här täcks
+# redo-vägen som saknar dialog.
+W=0
+while [ "$W" -lt 30 ]; do
+    N=$(grep -c "Input device ID:" "$CALIB_EVTEST" 2>/dev/null || true)
+    [ -z "$N" ] && N=0
+    [ "$N" -ge "$DEV_COUNT" ] && break
+    sleep 0.1
+    W=$((W + 1))
+done
+
+# Släng händelser som registrerats före bekräftelsen (dialogtangenter m.m.)
+: > "$CALIB_EVTEST"
+
 
 printf '\033[?25l' >/dev/tty
 stty -echo </dev/tty 2>/dev/null || true
-echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf '%*s' 21 '')${RESET_ALL}"
+echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf '%*s' 21 '')${RESET_ALL}  ${K_DIM}esc${CLEAR} ${K_DIM2}abort${CLEAR}"
+
+(
+    while :; do
+        if IFS= read -r -s -n1 -t 0.2 k </dev/tty 2>/dev/null; then
+            if [ "$k" = $'\e' ]; then
+                if IFS= read -r -s -n1 -t 0.1 extra </dev/tty 2>/dev/null; then
+                    if [ "$extra" != "[" ]; then
+                        touch /tmp/xbox-steam-calib-esc
+                        exit 0
+                    fi
+                else
+                    touch /tmp/xbox-steam-calib-esc
+                    exit 0
+                fi
+            fi
+        fi
+    done
+) &
+CALIB_ESC_PID=$!
 
 CALIB_PHASE=1
 CAPTURED_LINE=""
@@ -997,7 +1068,21 @@ COMBO_RESULT=""
 COMBO_BTN_CODE=""
 COMBO_BTN_NAME=""
 
-while IFS= read -r line; do
+CALIB_ABORTED=0
+while :; do
+    if [ -f /tmp/xbox-steam-calib-esc ]; then
+        CALIB_ABORTED=1
+        break
+    fi
+    if IFS= read -r -t 1 line; then
+        :
+    else
+        read_rc=$?
+        if [ "$read_rc" -gt 128 ]; then
+            continue
+        fi
+        break
+    fi
     if [ "$CALIB_PHASE" -eq 1 ]; then
         if echo "$line" | grep -q "code.*BTN_.*value 1"; then
             CAPTURED_LINE="$line"
@@ -1023,7 +1108,7 @@ while IFS= read -r line; do
             echo -ne "\033[1A\033[2K\r"
             echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Detected: ${FIRST_BTN_NAME}$(printf '%*s' $((31 - ${#FIRST_BTN_NAME})) '')${RESET_ALL}"
             echo ""
-            echo -e -n "  Hold for ${YELLOW}combo${CLEAR}, or release for ${HYPR_BLUE}single${CLEAR} mode..."
+            echo -e -n "  Hold for ${YELLOW}combo${CLEAR}, or release for ${HYPR_BLUE}single${CLEAR} mode...   ${K_DIM}esc${CLEAR} ${K_DIM2}abort${CLEAR}"
             CALIB_PHASE=2
         fi
     else
@@ -1051,8 +1136,17 @@ printf '\033[?25h' >/dev/tty
 stty echo </dev/tty 2>/dev/null || true
 set -e
 
+kill "$CALIB_ESC_PID" 2>/dev/null || true
+rm -f /tmp/xbox-steam-calib-esc
 [[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
 rm -f "$CALIB_EVTEST"
+
+if [ "$CALIB_ABORTED" -eq 1 ]; then
+    echo -ne "\033[1A\033[2K\r"
+    echo -e "${YELLOW}Calibration aborted.${CLEAR}"
+    echo ""
+    return 2
+fi
 
 if [ -z "$CAPTURED_LINE" ]; then
     echo -ne "\033[1A\033[2K\r"
@@ -1181,7 +1275,10 @@ for code in "$CHECK_BTN_CODE" "${MODIFIER_BTN_CODE:-}"; do
         echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
         echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
         echo -e ""
-        return 1
+        echo -e "   ${YELLOW}Press a different button to continue...${CLEAR}"
+        echo -e ""
+        IS_REDO=1
+        continue 2
     fi
 done
 
