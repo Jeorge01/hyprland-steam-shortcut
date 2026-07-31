@@ -326,6 +326,10 @@ read_key() {
     fi
 }
 
+drain_keys() {
+    while IFS= read -r -s -n1 -t 0.05 _ </dev/tty 2>/dev/null; do :; done
+}
+
 blue_line() {
     local esc=$'\e'
     if printf '%s' "$1" | grep -q "${esc}\\[1;37m"; then
@@ -408,7 +412,11 @@ device_menu() {
                 fi
                 ;;
         esac
-        [ -z "$res" ] && render
+        if [ -z "$res" ]; then
+            render
+        else
+            drain_keys
+        fi
     done
 
     printf '\033[?25h' >/dev/tty
@@ -1528,7 +1536,11 @@ main_menu() {
                 res="EXIT"
                 ;;
         esac
-        [ -z "$res" ] && render_main
+        if [ -z "$res" ]; then
+            render_main
+        else
+            drain_keys
+        fi
     done
 
     printf '\033[%dA' "$((count + 2))" >/dev/tty
