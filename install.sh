@@ -337,7 +337,7 @@ device_menu() {
     render() {
         local i first line selected
         printf '\033[H' >/dev/tty
-        echo -e "${HYPR_BLUE}󰒎  BOUN${HYPR_DARK_BLUE}D ${HYPR_DARKEST_BLUE}DE${HYPR_BLUE}VI${HYPR_DARK_BLUE}CES${CLEAR}" >/dev/tty
+        echo -e "${HYPR_BLUE}  BOUN${HYPR_DARK_BLUE}D ${HYPR_DARKEST_BLUE}DE${HYPR_BLUE}VI${HYPR_DARK_BLUE}CES${CLEAR}" >/dev/tty
         echo "" >/dev/tty
         for i in "${!it[@]}"; do
             if [ "$i" -eq "$sel" ]; then
@@ -407,7 +407,7 @@ no_binds_view() {
     local removed="${1:-}"
     printf '\033[?25l' >/dev/tty
     clear
-    echo -e "${HYPR_BLUE}󰒎  BOUN${HYPR_DARK_BLUE}D ${HYPR_DARKEST_BLUE}DE${HYPR_BLUE}VI${HYPR_DARK_BLUE}CES${CLEAR}"
+    echo -e "${HYPR_BLUE}  BOUN${HYPR_DARK_BLUE}D ${HYPR_DARKEST_BLUE}DE${HYPR_BLUE}VI${HYPR_DARK_BLUE}CES${CLEAR}"
     echo ""
     if [ -n "$removed" ]; then
         echo -e "${GREEN}Bind removed.${CLEAR}"
@@ -444,7 +444,7 @@ manage_binds() {
         items[${#items[@]}-1]+=$'\n'
 
         local choice
-        choice=$(device_menu "${items[@]}" "⟵  Back")
+        choice=$(device_menu "${items[@]}" "⟵ Back")
 
         case "$choice" in
             "BACK")
@@ -1195,7 +1195,7 @@ bind_flow() {
             return 1
         fi
         FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" | cut -d'"' -f2)
-        echo -e "  Rebinding device: ${WHITE}${FIXED_NAME}${CLEAR}"
+        echo -e "   Rebinding device: ${WHITE}${FIXED_NAME}${CLEAR}"
     fi
 
     echo -e "󰌽  Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
@@ -1229,7 +1229,7 @@ bind_flow() {
     INPUT_REMAPPER_WAS_ACTIVE=0
     if systemctl is-active --quiet input-remapper 2>/dev/null; then
         INPUT_REMAPPER_WAS_ACTIVE=1
-        echo "⏸  input-remapper is running — stopping temporarily for calibration..."
+        echo "  input-remapper is running — stopping temporarily for calibration..."
         sudo systemctl stop input-remapper
     fi
 
@@ -1241,7 +1241,7 @@ bind_flow() {
         PAUSED_UNITS+=("$u")
     done < <(systemctl --user list-units 'xbox-steam@*.service' --state=active --no-legend --no-pager 2>/dev/null | awk '{print $1}')
     if [ ${#PAUSED_UNITS[@]} -gt 0 ]; then
-        log_info "Pausing active binds for calibration..."
+        echo "  Pausing active binds for calibration..."
         for u in "${PAUSED_UNITS[@]}"; do
             systemctl --user stop "$u" 2>/dev/null || true
         done
@@ -1344,8 +1344,8 @@ EOFC
 main_menu() {
     local -a items=(
         "  Bind device — Install and calibrate button trigger"
-        "󰒎  Show bound devices — Manage, toggle or remove binds"
-        "󰁯  Uninstall everything — Remove the whole installation"
+        "  Show bound devices — Manage, toggle or remove binds"
+        "  Uninstall everything — Remove the whole installation"
     )
     local count=${#items[@]} sel=0 key res="" i
 
