@@ -248,10 +248,12 @@ uninstall_all() {
 
     echo -e "${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
 
+    local bind_count=0
     for conf in "$DEVICES_DIR"/*.conf; do
         [ -e "$conf" ] || continue
         id=$(basename "$conf" .conf)
         systemctl --user disable --now "xbox-steam@$id.service" 2>/dev/null || true
+        bind_count=$((bind_count + 1))
     done
     systemctl --user stop 'xbox-steam@*.service' 2>/dev/null || true
     systemctl --user disable --now 'xbox-steam@*.service' 2>/dev/null || true
@@ -274,7 +276,13 @@ uninstall_all() {
     done
     rm -f /tmp/xbox-steam-calibrating
 
-    echo -e "${GREEN}Uninstalled successfully.${CLEAR}"
+    if [ "$bind_count" -eq 0 ]; then
+        echo -e "${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"
+    elif [ "$bind_count" -eq 1 ]; then
+        echo -e "${GREEN}Removed 1 bind and uninstalled successfully.${CLEAR}"
+    else
+        echo -e "${GREEN}Removed $bind_count binds and uninstalled successfully.${CLEAR}"
+    fi
     echo ""
     echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
     printf '\033[?25l' >/dev/tty
