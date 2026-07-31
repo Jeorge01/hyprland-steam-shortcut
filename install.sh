@@ -230,6 +230,8 @@ EOFCFG
 }
 
 uninstall_all() {
+    clear
+    banner_uninstall
     echo -e "${YELLOW}This will remove:${CLEAR}"
     echo -e "  - all device binds (xbox-steam@<device>.service)"
     echo -e "  - systemd template unit (xbox-steam@.service)"
@@ -337,8 +339,7 @@ device_menu() {
     render() {
         local i first line selected
         printf '\033[H' >/dev/tty
-        echo -e "${HYPR_BLUE}  BOUN${HYPR_DARK_BLUE}D ${HYPR_DARKEST_BLUE}DE${HYPR_BLUE}VI${HYPR_DARK_BLUE}CES${CLEAR}" >/dev/tty
-        echo "" >/dev/tty
+        banner_bound_devices >/dev/tty
         for i in "${!it[@]}"; do
             if [ "$i" -eq "$sel" ]; then
                 selected=1
@@ -407,8 +408,7 @@ no_binds_view() {
     local removed="${1:-}"
     printf '\033[?25l' >/dev/tty
     clear
-    echo -e "${HYPR_BLUE}  BOUN${HYPR_DARK_BLUE}D ${HYPR_DARKEST_BLUE}DE${HYPR_BLUE}VI${HYPR_DARK_BLUE}CES${CLEAR}"
-    echo ""
+    banner_bound_devices
     if [ -n "$removed" ]; then
         echo -e "${GREEN}Bind removed.${CLEAR}"
         echo ""
@@ -741,20 +741,60 @@ EOF
     fi
 }
 
-show_banner() {
-    echo -e ""
+# -------------------------------------------------------------------------
+# ASCII ART BANNERS
+# -------------------------------------------------------------------------
+
+art_line() {
+    local line="$1" out="" prev=0 i=0
+    shift
+    local -a colors=( "${HYPR_BLUE}" "${HYPR_DARK_BLUE}" "${HYPR_DARKEST_BLUE}" )
+    for cut in "$@"; do
+        out+="${colors[$((i % 3))]}${line:prev:cut-prev}"
+        prev=$cut
+        i=$((i + 1))
+    done
+    out+="${colors[$((i % 3))]}${line:prev}"
+    printf '%s%s\n' "$out" "$CLEAR"
+}
+
+banner_uninstall() {
     echo -e "${HYPR_BLUE}"
 
-    printf "%b" "$(cat << EOF
-▖▖    ${HYPR_DARK_BLUE}  ▜   ${HYPR_DARKEST_BLUE}   ▌${HYPR_BLUE}  ▄▖▗ ${HYPR_DARK_BLUE}    ${HYPR_DARKEST_BLUE}   ${HYPR_BLUE}  ▄▖▌ ${HYPR_DARK_BLUE}    ▗ ${HYPR_DARKEST_BLUE}    ▗ ${HYPR_BLUE}
-▙▌▌▌▛▌${HYPR_DARK_BLUE}▛▘▐ ▀▌${HYPR_DARKEST_BLUE}▛▌▛▌${HYPR_BLUE}  ▚ ▜▘${HYPR_DARK_BLUE}█▌▀▌${HYPR_DARKEST_BLUE}▛▛▌${HYPR_BLUE}  ▚ ▛▌${HYPR_DARK_BLUE}▛▌▛▘▜▘${HYPR_DARKEST_BLUE}▛▘▌▌▜▘${HYPR_BLUE}
-▌▌▙▌▙▌${HYPR_DARK_BLUE}▌ ▐▖█▌${HYPR_DARKEST_BLUE}▌▌▙▌${HYPR_BLUE}  ▄▌▐▖${HYPR_DARK_BLUE}▙▖█▌${HYPR_DARKEST_BLUE}▌▌▌${HYPR_BLUE}  ▄▌▌▌${HYPR_DARK_BLUE}▙▌▌ ▐▖${HYPR_DARKEST_BLUE}▙▖▙▌▐▖${HYPR_BLUE}
-  ▄▌▌  ${HYPR_BLUE}In${HYPR_DARK_BLUE}st${HYPR_DARKEST_BLUE}all${HYPR_BLUE} scr${HYPR_DARK_BLUE}ipt${HYPR_BLUE}
-EOF
-)"
+    art_line "▖▖  ▘    ▗   ▜ ▜" 5 11
+    art_line "▌▌▛▌▌▛▌▛▘▜▘▀▌▐ ▐" 5 11
+    art_line "▙▌▌▌▌▌▌▄▌▐▖█▌▐▖▐▖" 5 11
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Re" "${HYPR_DARK_BLUE}" "mo" "${HYPR_DARKEST_BLUE}" "ve" "${HYPR_BLUE}" " al" "${HYPR_DARK_BLUE}" "l" "${HYPR_BLUE}" " bi" "${HYPR_DARK_BLUE}" "nd" "${HYPR_DARKEST_BLUE}" "s" "${CLEAR}"
+    echo ""
+}
 
-    echo -e "${CLEAR}"
-    echo -e ""
+banner_calibration() {
+    echo -e "${HYPR_BLUE}"
+
+    art_line "▄▖  ▜ ▘▌     ▗ ▘" 7 15
+    art_line "▌ ▀▌▐ ▌▛▌▛▘▀▌▜▘▌▛▌▛▌" 7 15
+    art_line "▙▖█▌▐▖▌▙▌▌ █▌▐▖▌▙▌▌▌" 7 15
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Cr" "${HYPR_DARK_BLUE}" "ea" "${HYPR_DARKEST_BLUE}" "te" "${HYPR_BLUE}" " yo" "${HYPR_DARK_BLUE}" "ur" "${HYPR_BLUE}" " bi" "${HYPR_DARK_BLUE}" "nd" "${CLEAR}"
+    echo ""
+}
+
+banner_bound_devices() {
+    echo -e "${HYPR_BLUE}"
+
+    art_line "▄        ▌  ▄     ▘" 4 8 12 18 21
+    art_line "▙▘▛▌▌▌▛▌▛▌  ▌▌█▌▌▌▌▛▘█▌▛▘" 4 8 12 18 21
+    art_line "▙▘▙▌▙▌▌▌▙▌  ▙▘▙▖▚▘▌▙▖▙▖▄▌" 4 8 12 18 21
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Ma" "${HYPR_DARK_BLUE}" "na" "${HYPR_DARKEST_BLUE}" "ge" "${HYPR_BLUE}" " yo" "${HYPR_DARK_BLUE}" "ur" "${HYPR_BLUE}" " bi" "${HYPR_DARK_BLUE}" "nd" "${HYPR_DARKEST_BLUE}" "s" "${CLEAR}"
+    echo ""
+}
+
+show_banner() {
+    echo -e "${HYPR_BLUE}"
+
+    art_line "▖▖      ▜      ▌  ▄▖▗          ▄▖▌     ▗     ▗ " 6 12 18 22 26 31 37 43
+    art_line "▙▌▌▌▛▌▛▘▐ ▀▌▛▌▛▌  ▚ ▜▘█▌▀▌▛▛▌  ▚ ▛▌▛▌▛▘▜▘▛▘▌▌▜▘" 6 12 18 22 26 31 37 43
+    art_line "▌▌▙▌▙▌▌ ▐▖█▌▌▌▙▌  ▄▌▐▖▙▖█▌▌▌▌  ▄▌▌▌▙▌▌ ▐▖▙▖▙▌▐▖" 6 12 18 22 26 31 37 43
+    printf '  %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "▄▌▌  " "${HYPR_BLUE}" "Ins" "${HYPR_DARK_BLUE}" "ta" "${HYPR_DARKEST_BLUE}" "ll" "${HYPR_BLUE}" " sc" "${HYPR_DARK_BLUE}" "ri" "${HYPR_DARKEST_BLUE}" "pt" "${CLEAR}"
 }
 
 show_banner
@@ -1187,6 +1227,7 @@ done
 # -------------------------------------------------------------------------
 bind_flow() {
     clear
+    banner_calibration
     FIXED_DEVICE_ID=""
     if [ "${1:-}" = "--device" ]; then
         FIXED_DEVICE_ID="${2:-}"
