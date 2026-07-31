@@ -411,6 +411,9 @@ device_menu() {
                     res="DELETE:$sel"
                 fi
                 ;;
+            ESC)
+                res="BACK"
+                ;;
         esac
         if [ -z "$res" ]; then
             render
