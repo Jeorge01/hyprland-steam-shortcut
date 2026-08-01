@@ -529,6 +529,16 @@ banner_bound_devices() {
     echo ""
 }
 
+banner_options() {
+    echo -e "${HYPR_BLUE}"
+
+    art_line "▄▖  ▗ ▘      " 6 9
+    art_line "▌▌▛▌▜▘▌▛▌▛▌▛▘" 6 9
+    art_line "▙▌▙▌▐▖▌▙▌▌▌▄▌" 6 9
+    printf '  %s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "▌ " "${HYPR_BLUE}" "Me" "${HYPR_DARK_BLUE}" "nu" "${CLEAR}"
+    echo ""
+}
+
 show_banner() {
     echo -e "${HYPR_BLUE}"
 
@@ -1201,6 +1211,7 @@ main_menu() {
         "  Bind device — Install and calibrate button trigger"
         "  Show bound devices — Manage, toggle or remove binds"
         "  Options — Uninstall binds or the whole program"
+        "  Exit"
     )
     local count=${#items[@]} sel=0 key res="" i
 
@@ -1258,16 +1269,14 @@ main_menu() {
 options_menu() {
     local -a items=(
         "  Remove all binds — Remove all binds, keep the program"
-        "󰗽  Uninstall program — Remove the whole installation"
-        "󰌍  Back — Return to the main menu"
+        "󱍯  Uninstall program — Remove the whole installation"
+        "󰌍  Back"
     )
     local count=${#items[@]} sel=0 key res="" i
 
     render_options() {
         printf '\033[H\033[J' >/dev/tty
-        show_banner >/dev/tty
-        echo "" >/dev/tty
-        echo -e "  ${HYPR_DARK_BLUE}OPTIONS${CLEAR}" >/dev/tty
+        banner_options >/dev/tty
         echo "" >/dev/tty
         for i in "${!items[@]}"; do
             if [ "$i" -eq "$sel" ]; then
@@ -1336,15 +1345,24 @@ while true; do
             manage_binds
             ;;
         *"Options"*)
-            case "$(options_menu)" in
-                *"Remove all binds"*)
-                    "$APP_DIR/uninstall.sh" binds
-                    ;;
-                *"Uninstall program"*)
-                    "$APP_DIR/uninstall.sh" all
-                    exit 0
-                    ;;
-            esac
+            while :; do
+                case "$(options_menu)" in
+                    *"Remove all binds"*)
+                        "$APP_DIR/uninstall.sh" binds || true
+                        ;;
+                    *"Uninstall program"*)
+                        if "$APP_DIR/uninstall.sh" all; then
+                            exit 0
+                        fi
+                        ;;
+                    *)
+                        break
+                        ;;
+                esac
+            done
+            ;;
+        *"Exit"*)
+            exit 0
             ;;
         "EXIT")
             exit 0

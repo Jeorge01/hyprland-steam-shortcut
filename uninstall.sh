@@ -40,13 +40,23 @@ art_line() {
     printf '%s%s\n' "$out" "$CLEAR"
 }
 
+banner_binds() {
+    echo -e "${HYPR_BLUE}"
+
+    art_line "▄▖             ▄▖▜ ▜   ▌ ▘   ▌  " 4 7 13 17 19 23 26 30
+    art_line "▙▘█▌▛▛▌▛▌▌▌█▌  ▌▌▐ ▐   ▛▌▌▛▌▛▌▛▘" 4 7 13 17 19 23 26 30
+    art_line "▌▌▙▖▌▌▌▙▌▚▘▙▖  ▛▌▐▖▐▖  ▙▌▌▌▌▙▌▄▌ " 4 7 13 17 19 23 26 30
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Unb" "${HYPR_DARK_BLUE}" "in" "${HYPR_DARKEST_BLUE}" "d" "${HYPR_BLUE}" " al" "${HYPR_DARK_BLUE}" "l" "${HYPR_BLUE}" " dev" "${HYPR_DARK_BLUE}" "ic" "${HYPR_DARKEST_BLUE}" "es" "${CLEAR}"
+    echo ""
+}
+
 banner_uninstall() {
     echo -e "${HYPR_BLUE}"
 
-    art_line "▖▖  ▘    ▗   ▜ ▜" 5 11
-    art_line "▌▌▛▌▌▛▌▛▘▜▘▀▌▐ ▐" 5 11
-    art_line "▙▌▌▌▌▌▌▄▌▐▖█▌▐▖▐▖" 5 11
-    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Re" "${HYPR_DARK_BLUE}" "mo" "${HYPR_DARKEST_BLUE}" "ve" "${HYPR_BLUE}" " al" "${HYPR_DARK_BLUE}" "l" "${HYPR_BLUE}" " bi" "${HYPR_DARK_BLUE}" "nd" "${HYPR_DARKEST_BLUE}" "s" "${CLEAR}"
+    art_line "▖▖  ▘    ▗   ▜ ▜   ▖▖▄▖▄▖" 7 13 17 23
+    art_line "▌▌▛▌▌▛▌▛▘▜▘▀▌▐ ▐   ▙▌▚ ▚ " 7 13 17 23
+    art_line "▙▌▌▌▌▌▌▄▌▐▖█▌▐▖▐▖  ▌▌▄▌▄▌" 7 13 17 23
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Unin" "${HYPR_DARK_BLUE}" "sta" "${HYPR_DARKEST_BLUE}" "ll" "${HYPR_BLUE}" " Pro" "${HYPR_DARK_BLUE}" "gr" "${HYPR_DARKEST_BLUE}" "am" "${CLEAR}"
     echo ""
 }
 
@@ -105,7 +115,11 @@ remove_all_binds() {
 }
 
 clear
-banner_uninstall
+if [ "$MODE" = "binds" ]; then
+    banner_binds
+else
+    banner_uninstall
+fi
 
 if [ "$MODE" = "binds" ]; then
     count_binds
@@ -122,8 +136,7 @@ if [ "$MODE" = "binds" ]; then
 
     if ! confirm "Remove all binds?"; then
         echo -e "${YELLOW}Aborted.${CLEAR}"
-        press_enter
-        exit 0
+        exit 1
     fi
 
     echo -e "${YELLOW}Removing binds...${CLEAR}"
@@ -151,8 +164,7 @@ echo ""
 
 if ! confirm "Uninstall hss?"; then
     echo -e "${YELLOW}Aborted.${CLEAR}"
-    press_enter
-    exit 0
+    exit 1
 fi
 
 echo -e "${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
