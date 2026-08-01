@@ -28,6 +28,8 @@ K_DIM=$'\e[38;2;97;97;97m'
 K_DIM2=$'\e[38;2;73;73;73m'
 K_DIM3=$'\e[38;2;60;60;60m'
 
+SEL_ARROW=$'\uf0da'
+
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/steam-shortcut"
 DEVICES_DIR="$CONFIG_DIR/devices"
 
@@ -390,7 +392,7 @@ device_menu() {
             while IFS= read -r line; do
                 if [ "$first" -eq 1 ]; then
                     if [ "$selected" -eq 1 ]; then
-                        echo -e "${HYPR_BLUE}>${CLEAR} $(blue_line "$line")\033[K" >/dev/tty
+                        echo -e "${HYPR_BLUE}${SEL_ARROW}${CLEAR} $(blue_line "$line")\033[K" >/dev/tty
                     else
                         echo -e "  ${line}\033[K" >/dev/tty
                     fi
@@ -1576,7 +1578,7 @@ main_menu() {
         echo "" >/dev/tty
         for i in "${!items[@]}"; do
             if [ "$i" -eq "$sel" ]; then
-                echo -e "${HYPR_BLUE}>${CLEAR} ${HYPR_BLUE}${items[$i]}${CLEAR}" >/dev/tty
+                echo -e "${HYPR_BLUE}${SEL_ARROW}${CLEAR} ${HYPR_BLUE}${items[$i]}${CLEAR}" >/dev/tty
             else
                 echo -e "  ${items[$i]}" >/dev/tty
             fi
