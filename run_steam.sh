@@ -21,21 +21,126 @@ if [ "$1" == "listen" ]; then
     fi
     source "$CONFIG_FILE"
 
+    # Normalizes a per-instance identity (input Uniq or USB serial) into a safe
+    # systemd instance-name part: lowercase, alnum kept, runs of other chars -> '-'.
+    sanitize_id_part() {
+        echo "$1" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-\+//; s/-\+$//' | cut -c1-40
+    }
+
+    # USB iSerialNumber (if any) of the USB device owning an input event node.
+    usb_serial_of_event() {
+        local ev="$1" p s
+        p=$(readlink -f "/sys/class/input/$ev" 2>/dev/null) || return 1
+        while [ -n "$p" ] && [ "$p" != "/" ]; do
+            if [ -f "$p/idVendor" ] && [ -f "$p/serial" ]; then
+                s=$(cat "$p/serial" 2>/dev/null) || s=""
+                if [ -n "$s" ]; then
+                    printf '%s\n' "$s"
+                    return 0
+                fi
+            fi
+            p=${p%/*}
+        done
+        return 1
+    }
+
+    # The input U: Uniq value of the /proc record owning an event node.
+    input_uniq_of_event() {
+        local ev="$1"
+        awk -v RS='' -v ev="$ev" '
+            {
+                hit = 0
+                for (i = 1; i <= NF; i++) if ($i == "event" ev || $i == "Handlers=event" ev) hit = 1
+                if (!hit) next
+                p = index($0, "U: Uniq="); if (!p) next
+                s = substr($0, p + 8); sub(/\n.*/, "", s)
+                print s
+            }' /proc/bus/input/devices 2>/dev/null
+    }
+
+    # Prints the event node numbers (eventN) currently matching the device.
+    # The device id may carry a per-instance suffix after the VID-PID pair
+    # (e.g. 045e-028e-<serial>) so two identical controllers get separate binds.
+    # Steam Input clones have empty Phys and are excluded.
+    device_events() {
+        local id="$1" name="${2:-}" uniq="${3:-}" vid="" pid="" inst="" rest="" out="" ev="" kept=""
+        if [[ "$id" =~ ^[0-9a-fA-F]{4}-[0-9a-fA-F]{4}(-[a-z0-9]+)*$ ]]; then
+            vid=$(echo "${id%%-*}" | tr '[:upper:]' '[:lower:]')
+            rest="${id#*-}"
+            pid=$(echo "${rest%%-*}" | tr '[:upper:]' '[:lower:]')
+            case "$rest" in
+                *-*) inst="${rest#*-}" ;;
+            esac
+        fi
+        if [ -n "$vid" ]; then
+            if [ -n "$inst" ]; then
+                out=$(awk -v RS='' -v vid="$vid" -v pid="$pid" '
+                    function physval(    s, p) {
+                        p = index($0, "P: Phys="); if (!p) return ""
+                        s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                    }
+                    index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") && physval() != "" {
+                        for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                    }' /proc/bus/input/devices 2>/dev/null)
+                kept=""
+                for ev in $out; do
+                    if [ "$(sanitize_id_part "$(input_uniq_of_event "$ev")")" = "$inst" ] || \
+                       [ "$(sanitize_id_part "$(usb_serial_of_event "$ev")")" = "$inst" ]; then
+                        [ -n "$kept" ] && kept+=$'\n'
+                        kept+="$ev"
+                    fi
+                done
+                out="$kept"
+            else
+                if [ -n "$uniq" ]; then
+                    out=$(awk -v RS='' -v vid="$vid" -v pid="$pid" -v uniq="$uniq" '
+                        function uniqval(    s, p) {
+                            p = index($0, "U: Uniq="); if (!p) return ""
+                            s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                        }
+                        function physval(    s, p) {
+                            p = index($0, "P: Phys="); if (!p) return ""
+                            s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                        }
+                        index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") && uniqval() == uniq && physval() != "" {
+                            for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                        }' /proc/bus/input/devices 2>/dev/null)
+                fi
+                if [ -z "$out" ]; then
+                    out=$(awk -v RS='' -v vid="$vid" -v pid="$pid" '
+                        function physval(    s, p) {
+                            p = index($0, "P: Phys="); if (!p) return ""
+                            s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                        }
+                        index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") && physval() != "" {
+                            for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                        }' /proc/bus/input/devices 2>/dev/null)
+                fi
+            fi
+        elif [ -n "$name" ]; then
+            out=$(awk -v RS='' -v name="$name" '
+                index($0, "N: Name=\"" name "\"") {
+                    for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                }' /proc/bus/input/devices 2>/dev/null)
+        fi
+        printf '%s\n' "$out"
+    }
+
     PID_FILE="/tmp/xbox-steam-$DEVICE_ID-pids.txt"
 
     echo "Starting listener for $TARGET_DEV_NAME ($DEVICE_ID)..."
 
     while true; do
-        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
+        until [ -n "$(device_events "$DEVICE_ID" "$TARGET_DEV_NAME" "${DEVICE_UNIQ:-}")" ]; do
             echo "Waiting for your controller ($TARGET_DEV_NAME) to initialize..."
             sleep 2
         done
 
-        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
+        EVENT_NUMS=$(device_events "$DEVICE_ID" "$TARGET_DEV_NAME" "${DEVICE_UNIQ:-}")
 
         for NUM in $EVENT_NUMS; do
-            until [ -r "/dev/input/event$NUM" ]; do
-                echo "Waiting for /dev/input/event$NUM to become readable..."
+            until [ -r "/dev/input/$NUM" ]; do
+                echo "Waiting for /dev/input/$NUM to become readable..."
                 sleep 0.2
             done
         done
@@ -51,10 +156,10 @@ if [ "$1" == "listen" ]; then
         LISTENER_PIDS=""
 
         for NUM in $EVENT_NUMS; do
-            if [ -e "/dev/input/event$NUM" ]; then
-                echo "Listening on /dev/input/event$NUM"
+            if [ -e "/dev/input/$NUM" ]; then
+                echo "Listening on /dev/input/$NUM"
                 (
-                    sudo evtest /dev/input/event$NUM 2>/dev/null | while read -r line; do
+                    sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
                         [ -f /tmp/xbox-steam-calibrating ] && continue
                         if [ "$BIND_MODE" = "combo" ]; then
                             if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
@@ -85,7 +190,7 @@ if [ "$1" == "listen" ]; then
             sleep 2
             STILL_CONNECTED=1
             for NUM in $EVENT_NUMS; do
-                if [ ! -e "/dev/input/event$NUM" ]; then
+                if [ ! -e "/dev/input/$NUM" ]; then
                     STILL_CONNECTED=0
                     break
                 fi

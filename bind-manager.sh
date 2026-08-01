@@ -120,9 +120,130 @@ confirm_dialog() {
 # HELPERS
 # -------------------------------------------------------------------------
 
+# Normalizes a per-instance identity (input Uniq or USB serial) into a safe
+# systemd instance-name part: lowercase, alnum kept, runs of other chars -> '-'.
+sanitize_id_part() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-\+//; s/-\+$//' | cut -c1-40
+}
+
+# USB iSerialNumber (if any) of the USB device owning an input event node,
+# found by walking up the sysfs path from /sys/class/input/<event>. Empty when
+# the event is not backed by a USB device or the device has no serial.
+usb_serial_of_event() {
+    local ev="$1" p s
+    p=$(readlink -f "/sys/class/input/$ev" 2>/dev/null) || return 1
+    while [ -n "$p" ] && [ "$p" != "/" ]; do
+        if [ -f "$p/idVendor" ] && [ -f "$p/serial" ]; then
+            s=$(cat "$p/serial" 2>/dev/null) || s=""
+            if [ -n "$s" ]; then
+                printf '%s\n' "$s"
+                return 0
+            fi
+        fi
+        p=${p%/*}
+    done
+    return 1
+}
+
+# The input U: Uniq value of the /proc record owning an event node (empty if none).
+input_uniq_of_event() {
+    local ev="$1"
+    awk -v RS='' -v ev="$ev" '
+        {
+            hit = 0
+            for (i = 1; i <= NF; i++) if ($i == "event" ev || $i == "Handlers=event" ev) hit = 1
+            if (!hit) next
+            p = index($0, "U: Uniq="); if (!p) next
+            s = substr($0, p + 8); sub(/\n.*/, "", s)
+            print s
+        }' /proc/bus/input/devices 2>/dev/null
+}
+
+# Prints the event node numbers (eventN) currently matching the device.
+# The device id may carry a per-instance suffix after the VID-PID pair
+# (e.g. 045e-028e-<serial>) so two identical controllers get separate binds.
+# Matching priority (Steam Input clones have empty Phys and are excluded):
+#   id VID-PID-<instance>                    -> VID+PID and (input Uniq or USB
+#                                                serial == instance)
+#   id VID-PID + stored DEVICE_UNIQ          -> VID+PID + Uniq + non-empty Phys
+#   id VID-PID + no uniq                     -> VID+PID + non-empty Phys
+#   otherwise (e.g. e2e-test-controller)     -> exact Name match
+device_events() {
+    local id="$1" name="${2:-}" uniq="${3:-}" vid="" pid="" inst="" rest="" out="" ev="" kept=""
+    if [[ "$id" =~ ^[0-9a-fA-F]{4}-[0-9a-fA-F]{4}(-[a-z0-9]+)*$ ]]; then
+        vid=$(echo "${id%%-*}" | tr '[:upper:]' '[:lower:]')
+        rest="${id#*-}"
+        pid=$(echo "${rest%%-*}" | tr '[:upper:]' '[:lower:]')
+        case "$rest" in
+            *-*) inst="${rest#*-}" ;;
+        esac
+    fi
+    if [ -n "$vid" ]; then
+        if [ -n "$inst" ]; then
+            out=$(awk -v RS='' -v vid="$vid" -v pid="$pid" '
+                function physval(    s, p) {
+                    p = index($0, "P: Phys="); if (!p) return ""
+                    s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                }
+                index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") && physval() != "" {
+                    for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                }' /proc/bus/input/devices 2>/dev/null)
+            kept=""
+            for ev in $out; do
+                if [ "$(sanitize_id_part "$(input_uniq_of_event "$ev")")" = "$inst" ] || \
+                   [ "$(sanitize_id_part "$(usb_serial_of_event "$ev")")" = "$inst" ]; then
+                    [ -n "$kept" ] && kept+=$'\n'
+                    kept+="$ev"
+                fi
+            done
+            out="$kept"
+        else
+            if [ -n "$uniq" ]; then
+                out=$(awk -v RS='' -v vid="$vid" -v pid="$pid" -v uniq="$uniq" '
+                    function uniqval(    s, p) {
+                        p = index($0, "U: Uniq="); if (!p) return ""
+                        s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                    }
+                    function physval(    s, p) {
+                        p = index($0, "P: Phys="); if (!p) return ""
+                        s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                    }
+                    index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") && uniqval() == uniq && physval() != "" {
+                        for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                    }' /proc/bus/input/devices 2>/dev/null)
+            fi
+            if [ -z "$out" ]; then
+                out=$(awk -v RS='' -v vid="$vid" -v pid="$pid" '
+                    function physval(    s, p) {
+                        p = index($0, "P: Phys="); if (!p) return ""
+                        s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+                    }
+                    index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") && physval() != "" {
+                        for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+                    }' /proc/bus/input/devices 2>/dev/null)
+            fi
+        fi
+    elif [ -n "$name" ]; then
+        out=$(awk -v RS='' -v name="$name" '
+            index($0, "N: Name=\"" name "\"") {
+                for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+            }' /proc/bus/input/devices 2>/dev/null)
+    fi
+    printf '%s\n' "$out"
+}
+
+device_owns_event() {
+    local id="$1" name="$2" uniq="$3" ev="$4" list
+    [ -z "$ev" ] && return 1
+    list=$(device_events "$id" "$name" "$uniq")
+    [ -z "$list" ] && return 1
+    echo "$list" | grep -qw "$ev" && return 0
+    return 1
+}
+
 bind_status() {
     local id="$1" conf="$2"
-    local mode btn name state connected mod trg modc trgc btnc
+    local mode btn name state connected mod trg modc trgc btnc uniq
     mode=$(grep "^BIND_MODE=" "$conf" 2>/dev/null | cut -d'"' -f2)
     if [ "$mode" = "combo" ]; then
         mod=$(grep "^MODIFIER_BTN_NAME=" "$conf" 2>/dev/null | cut -d'"' -f2)
@@ -145,7 +266,8 @@ bind_status() {
         state_word="${RED}inactive${CLEAR}"
     fi
 
-    if [ -n "$name" ] && awk -v name="$name" '$0 == "N: Name=\"" name "\""' /proc/bus/input/devices 2>/dev/null | grep -q .; then
+    uniq=$(grep "^DEVICE_UNIQ=" "$conf" 2>/dev/null | cut -d'"' -f2)
+    if [ -n "$name" ] && device_events "$id" "$name" "$uniq" | grep -q .; then
         connected="${GREEN}connected${CLEAR}"
     else
         connected="${YELLOW}disconnected${CLEAR}"
@@ -222,10 +344,13 @@ migrate_legacy() {
     old_mode=$(grep '^BIND_MODE=' "$CONFIG_DIR/config" | cut -d'"' -f2)
     [ -z "$old_name" ] && return 0
 
-    local rec vid product id
-    rec=$(awk -v RS='' -v name="$old_name" 'index($0, "N: Name=\"" name "\"")' /proc/bus/input/devices)
+    local rec vid product id uniq serial evnode
+    rec=$(awk -v RS='' -v name="$old_name" 'for (i=1;i<=NF;i++) if ($i == "N: Name=\"" name "\"") { print; exit }' /proc/bus/input/devices)
     vid=$(echo "$rec" | grep -oP 'Vendor=\K[0-9A-Fa-f]{4}' | tr '[:upper:]' '[:lower:]')
     product=$(echo "$rec" | grep -oP 'Product=\K[0-9A-Fa-f]{4}' | tr '[:upper:]' '[:lower:]')
+    uniq=$(echo "$rec" | grep -oP '^U: Uniq=\K.*' | head -n1)
+    evnode=$(echo "$rec" | grep -oP '(Handlers=)?event[0-9]+' | head -n1 | sed 's/^Handlers=//')
+    serial=$(usb_serial_of_event "$evnode" || true)
     if [ -n "$vid" ] && [ -n "$product" ]; then
         id="${vid}-${product}"
     else
@@ -234,6 +359,8 @@ migrate_legacy() {
 
     cat > "$DEVICES_DIR/$id.conf" << EOFC
 TARGET_DEV_NAME="$old_name"
+DEVICE_UNIQ="$uniq"
+DEVICE_SERIAL="$serial"
 BIND_MODE="$old_mode"
 TARGET_BTN_CODE=$(grep '^TARGET_BTN_CODE=' "$CONFIG_DIR/config" | cut -d'"' -f2)
 TARGET_BTN_NAME=$(grep '^TARGET_BTN_NAME=' "$CONFIG_DIR/config" | cut -d'"' -f2)
@@ -713,10 +840,10 @@ USER_ID=$(id -u)
 # on relative to when evtest was started — a device switched on during the
 # confirmation dialog (or while waiting for input) is still caught.
 # KNOWN: space-separated list of event nodes already being monitored.
-# FILTER_NAME: if set, only attach to nodes belonging to that device name.
+# FILTER_ID: if set, only attach to nodes belonging to that device (id, name, uniq).
 # Runs in the background until calibration finishes (killed by "kill $(jobs -p)").
 spawn_hotplug_evtest() {
-    local known="$1" filter_name="$2" ev
+    local known="$1" filter_id="$2" filter_name="$3" filter_uniq="$4" ev
     trap 'kill $(jobs -p) 2>/dev/null || true; exit 0' TERM INT
     while :; do
         sleep 0.2
@@ -725,8 +852,7 @@ spawn_hotplug_evtest() {
             case " $known " in
                 *" $ev "*) continue ;;
             esac
-            if [ -z "$filter_name" ] || awk -v RS='' -v ev="${ev##*/}" -v name="$filter_name" \
-                'index($0, "N: Name=\"" name "\"") && $0 ~ "Handlers=.*" ev "( |$)"' /proc/bus/input/devices 2>/dev/null | grep -q .; then
+            if [ -z "$filter_id" ] || device_owns_event "$filter_id" "$filter_name" "$filter_uniq" "${ev##*/}"; then
                 sudo stdbuf -oL timeout 130 evtest "$ev" 2>/dev/null | stdbuf -oL sed "s|^|$ev: |" >> "$CALIB_EVTEST" &
             fi
             known="$known $ev"
@@ -747,7 +873,8 @@ spawn_calib_evtest() {
     if [ -n "$FIXED_DEVICE_ID" ]; then
         FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
         [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
-        FIXED_EVENTS=$(awk -v name="$FIXED_NAME" 'index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices)
+        FIXED_UNIQ=$(grep "^DEVICE_UNIQ=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
+        FIXED_EVENTS=$(device_events "$FIXED_DEVICE_ID" "$FIXED_NAME" "$FIXED_UNIQ")
         if [ -z "$FIXED_EVENTS" ]; then
             echo ""
             echo -e "${RED}❌ ERROR: Device '$FIXED_NAME' is not connected.${CLEAR}"
@@ -761,7 +888,7 @@ spawn_calib_evtest() {
                 CALIB_MONITORED="$CALIB_MONITORED /dev/input/$evnode"
             fi
         done
-        spawn_hotplug_evtest "$CALIB_MONITORED" "$FIXED_NAME" &
+        spawn_hotplug_evtest "$CALIB_MONITORED" "$FIXED_DEVICE_ID" "$FIXED_NAME" "$FIXED_UNIQ" &
     else
         for ev in /dev/input/event*; do
             if [ -r "$ev" ] || [ "$(id -u)" = "0" ] || command -v sudo &>/dev/null; then
@@ -770,7 +897,7 @@ spawn_calib_evtest() {
                 CALIB_MONITORED="$CALIB_MONITORED $ev"
             fi
         done
-        spawn_hotplug_evtest "$CALIB_MONITORED" "" &
+        spawn_hotplug_evtest "$CALIB_MONITORED" "" "" "" &
     fi
     return 0
 }
@@ -896,11 +1023,21 @@ while :; do
             DEV_RECORD=$(awk -v RS='' '/Handlers=.*'"${DETECTED_EV##*/}"'( |$)/' /proc/bus/input/devices)
             TARGET_DEV_NAME=$(echo "$DEV_RECORD" | grep -oP 'Name="\K[^"]+')
             [ -z "$TARGET_DEV_NAME" ] && TARGET_DEV_NAME="Generic Controller"
+            DEVICE_UNIQ=$(echo "$DEV_RECORD" | grep -oP '^U: Uniq=\K.*' | head -n1)
+            DEVICE_SERIAL=$(usb_serial_of_event "${DETECTED_EV##*/}" || true)
 
             VENDOR=$(echo "$DEV_RECORD" | grep -oP 'Vendor=\K[0-9A-Fa-f]{4}' | tr '[:upper:]' '[:lower:]')
             PRODUCT=$(echo "$DEV_RECORD" | grep -oP 'Product=\K[0-9A-Fa-f]{4}' | tr '[:upper:]' '[:lower:]')
             if [ -n "$VENDOR" ] && [ -n "$PRODUCT" ]; then
                 DEVICE_ID="${VENDOR}-${PRODUCT}"
+                if [ -n "$DEVICE_UNIQ" ]; then
+                    DEVICE_INSTANCE=$(sanitize_id_part "$DEVICE_UNIQ")
+                else
+                    DEVICE_INSTANCE=$(sanitize_id_part "$DEVICE_SERIAL")
+                fi
+                if [ -n "$DEVICE_INSTANCE" ]; then
+                    DEVICE_ID="${DEVICE_ID}-${DEVICE_INSTANCE}"
+                fi
             else
                 DEVICE_ID=$(echo "$TARGET_DEV_NAME" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
             fi
@@ -1053,6 +1190,7 @@ echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L2}${HYPR_BLUE}  │${CLEAR}"
 echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L3}${HYPR_BLUE}  │${CLEAR}"
 echo -e "${HYPR_BLUE}│${CLEAR}${COLOR_L4}${HYPR_BLUE}  │${CLEAR}"
 echo -e "${HYPR_BLUE}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
+echo -e "   ${K_DIM2}identity: ${CLEAR}${WHITE}${DEVICE_UNIQ:-${DEVICE_SERIAL:-none}}${CLEAR}  ${K_DIM3}(${DEVICE_ID})${CLEAR}"
 
 # Blacklist check — prevent dangerous button bindings
 BLACKLISTED_CODES="1 14 15 28 29 42 54 56 57 97 100 111 272 273 274 275 276 277 278"
@@ -1224,6 +1362,10 @@ bind_flow() {
     done
 
     if [ -z "$FIXED_DEVICE_ID" ] && [ -f "$DEVICES_DIR/$DEVICE_ID.conf" ]; then
+        if [ -z "${DEVICE_UNIQ:-}" ] && [ -z "${DEVICE_SERIAL:-}" ]; then
+            echo -e "   ${YELLOW}⚠  This device has no Uniq/serial — it cannot be told apart from another identical unit.${CLEAR}"
+            echo -e "   ${YELLOW}   Both would share this bind.${CLEAR}"
+        fi
         if ! confirm "This device is already bound. Replace the existing bind?"; then
             echo -e "${YELLOW}Aborted. Nothing changed.${CLEAR}"
             return 0
@@ -1243,6 +1385,8 @@ EOFCFG
     mkdir -p "$DEVICES_DIR"
     cat > "$DEVICES_DIR/$DEVICE_ID.conf" << EOFC
 TARGET_DEV_NAME="$TARGET_DEV_NAME"
+DEVICE_UNIQ="$DEVICE_UNIQ"
+DEVICE_SERIAL="$DEVICE_SERIAL"
 BIND_MODE="$BIND_MODE"
 TARGET_BTN_CODE="$TARGET_BTN_CODE"
 TARGET_BTN_NAME="$TARGET_BTN_NAME"
@@ -1261,6 +1405,9 @@ EOFC
     echo "─────────────────────────────────────────"
     echo -e "${GREEN}  Inst${DARK_GREEN}alla${DARKEST_GREEN}tion${GREEN}/Up${DARK_GREEN}da${DARKEST_GREEN}te${GREEN} com${DARK_GREEN}ple${DARKEST_GREEN}te!${CLEAR}"
     echo "   Your device is mapped dynamically."
+    if [ -z "${DEVICE_UNIQ:-}" ] && [ -z "${DEVICE_SERIAL:-}" ]; then
+        echo -e "   ${YELLOW}⚠  No Uniq/serial detected — identical controllers of this model share this bind.${CLEAR}"
+    fi
     echo "   If it doesn't work, check the log: cat ~/steam_error.log"
     echo ""
     echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
