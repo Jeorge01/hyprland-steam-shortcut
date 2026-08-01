@@ -181,6 +181,31 @@ restore_paused() {
     fi
 }
 
+# Efter ett fel (t.ex. enhet ej ansluten): gum-dialog med enter = tillbaka till
+# menyn, eller "Retry" för att köra om kalibreringen. Fallback: Enter-prompt.
+back_or_retry() {
+    echo ""
+    if command -v gum &>/dev/null; then
+        if gum confirm "Return to the menu?" \
+            --prompt.foreground "#E74C3C" \
+            --selected.foreground "#FFFFFF" \
+            --selected.background "#E74C3C" \
+            --unselected.foreground "#CCCCCC" \
+            --unselected.background "#2A2A2A" \
+            --affirmative " Back " \
+            --negative " Retry " \
+            </dev/tty; then
+            return 0
+        else
+            return 1
+        fi
+    else
+        echo -e "   ${GRAY_BG}${WHITE_FG}Press Enter to return to the menu...${RESET_ALL}"
+        read -r -s </dev/tty || true
+        return 0
+    fi
+}
+
 migrate_legacy() {
     [ -f "$CONFIG_DIR/config" ] || return 0
     grep -q '^TARGET_DEV_NAME=' "$CONFIG_DIR/config" || return 0
@@ -365,13 +390,13 @@ device_menu() {
             while IFS= read -r line; do
                 if [ "$first" -eq 1 ]; then
                     if [ "$selected" -eq 1 ]; then
-                        echo -e "${HYPR_BLUE}>${CLEAR} $(blue_line "$line")" >/dev/tty
+                        echo -e "${HYPR_BLUE}>${CLEAR} $(blue_line "$line")\033[K" >/dev/tty
                     else
-                        echo -e "  ${line}" >/dev/tty
+                        echo -e "  ${line}\033[K" >/dev/tty
                     fi
                     first=0
                 else
-                    echo -e "  ${line}" >/dev/tty
+                    echo -e "  ${line}\033[K" >/dev/tty
                 fi
             done <<< "${it[$i]}"
         done
@@ -398,7 +423,17 @@ device_menu() {
                 ;;
             t)
                 if [ "$sel" -lt $((count - 1)) ]; then
-                    res="TOGGLE:$sel"
+                    if [ -n "${TOGGLE_CB:-}" ]; then
+                        local new_item
+                        new_item="$("$TOGGLE_CB" "$sel")"
+                        if [ -n "$new_item" ]; then
+                            it[$sel]="$new_item"
+                        fi
+                        drain_keys
+                        render
+                    else
+                        res="TOGGLE:$sel"
+                    fi
                 fi
                 ;;
             r)
@@ -455,6 +490,14 @@ manage_binds() {
         no_binds_view
         return 0
     fi
+
+    local TOGGLE_CB=toggle_menu_item
+    toggle_menu_item() {
+        local idx="$1"
+        local id="${ids[$idx]}"
+        toggle_bind "$id"
+        bind_status "$id" "$DEVICES_DIR/$id.conf"
+    }
 
     while true; do
         local items=() ids=() row id conf i
@@ -982,25 +1025,17 @@ spawn_calib_evtest() {
 
 calibrate() {
 IS_REDO=0
+# Vid retry från bind_flow (t.ex. enhet ej ansluten) hoppas bekräftelsedialogen
+# över — READY-bannern/introduktionen sitter redan i headern.
+[ "${CALIB_RETRY:-0}" -eq 1 ] && IS_REDO=1
 while true; do
 if [ "${IS_REDO:-0}" -eq 0 ]; then
-echo ""
-echo -e "${HYPR_BLUE}  IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
-if [ -n "$FIXED_DEVICE_ID" ]; then
-    FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
-    [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
-    echo -e "   Rebinding device: ${WHITE}${FIXED_NAME}${CLEAR}"
-else
-    echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
-    echo -e "   You will have ${YELLOW}60 seconds${CLEAR} to press a button."
-    echo -e "   Supports ${YELLOW}single${CLEAR} or ${YELLOW}combo${CLEAR} binds (hold first button + press second)."
-fi
-echo ""
 set +e
 if ! spawn_calib_evtest; then
     set -e
     return 1
 fi
+echo ""
 if command -v gum &>/dev/null; then
     if ! gum confirm "Ready to calibrate?" \
         --affirmative " Calibrate " \
@@ -1338,17 +1373,14 @@ done
 # -------------------------------------------------------------------------
 # BIND FLOW
 # -------------------------------------------------------------------------
-bind_flow() {
-    clear
+
+# Den fasta headern som visas överst i bind-flödet. Vid retry (enhet ej
+# ansluten) rensas skärmen och bara denna ritas om.
+print_bind_header() {
     banner_calibration
-    FIXED_DEVICE_ID=""
-    if [ "${1:-}" = "--device" ]; then
-        FIXED_DEVICE_ID="${2:-}"
-        if [ -z "$FIXED_DEVICE_ID" ] || [ ! -f "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" ]; then
-            echo -e "${RED}Invalid device id.${CLEAR}"
-            return 1
-        fi
-        FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" | cut -d'"' -f2)
+    if [ -n "${FIXED_DEVICE_ID:-}" ]; then
+        FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
+        [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
         echo -e "   Rebinding device: ${WHITE}${FIXED_NAME}${CLEAR}"
     fi
 
@@ -1377,51 +1409,91 @@ bind_flow() {
         echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf > /dev/null
     fi
 
-    # -------------------------------------------------------------------------
-    # Stop input-remapper temporarily (it grabs all input devices and blocks evtest)
-    # -------------------------------------------------------------------------
-    INPUT_REMAPPER_WAS_ACTIVE=0
-    if systemctl is-active --quiet input-remapper 2>/dev/null; then
-        INPUT_REMAPPER_WAS_ACTIVE=1
-        echo "  input-remapper is running — stopping temporarily for calibration..."
-        sudo systemctl stop input-remapper
+    # READY-bannern + enhetsraden hör till den statiska headern — de raderas
+    # inte vid retry, så de är synliga även på återförsök.
+    echo ""
+    echo -e "${HYPR_BLUE}  IN${HYPR_DARK_BLUE}PU${HYPR_DARKEST_BLUE}T${HYPR_BLUE} DE${HYPR_DARK_BLUE}VI${HYPR_DARKEST_BLUE}CE${HYPR_BLUE} CALI${HYPR_DARK_BLUE}BRAT${HYPR_DARKEST_BLUE}ION${HYPR_BLUE} RE${HYPR_DARK_BLUE}AD${HYPR_DARKEST_BLUE}Y${CLEAR}"
+    if [ -n "${FIXED_DEVICE_ID:-}" ]; then
+        FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
+        [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
+        echo -e "   Rebinding device: ${WHITE}${FIXED_NAME}${CLEAR}"
+    else
+        echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
+        echo -e "   You will have ${YELLOW}60 seconds${CLEAR} to press a button."
+        echo -e "   Supports ${YELLOW}single${CLEAR} or ${YELLOW}combo${CLEAR} binds (hold first button + press second)."
+    fi
+}
+
+bind_flow() {
+    clear
+    CALIB_RETRY=0
+    FIXED_DEVICE_ID=""
+    if [ "${1:-}" = "--device" ]; then
+        FIXED_DEVICE_ID="${2:-}"
+        if [ -z "$FIXED_DEVICE_ID" ] || [ ! -f "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" ]; then
+            echo -e "${RED}Invalid device id.${CLEAR}"
+            return 1
+        fi
     fi
 
-    # -------------------------------------------------------------------------
-    # PAUSE ACTIVE BINDS DURING CALIBRATION
-    # -------------------------------------------------------------------------
-    PAUSED_UNITS=()
-    while IFS= read -r u; do
-        PAUSED_UNITS+=("$u")
-    done < <(systemctl --user list-units 'xbox-steam@*.service' --state=active --no-legend --no-pager 2>/dev/null | awk '{print $1}')
-    if [ ${#PAUSED_UNITS[@]} -gt 0 ]; then
-        echo "  Pausing active binds for calibration..."
-        for u in "${PAUSED_UNITS[@]}"; do
-            systemctl --user stop "$u" 2>/dev/null || true
-        done
-        sudo pkill -f "[e]vtest" 2>/dev/null || true
-    fi
-    touch /tmp/xbox-steam-calibrating
+    print_bind_header
+    printf '\0337' >/dev/tty  # spara cursor-position (slutet av headern)
 
-    calib_rc=0
-    calibrate || calib_rc=$?
+    while :; do
+        # -------------------------------------------------------------------------
+        # Stop input-remapper + pausa binds — endast första försöket. På retries
+        # förblir de pausade (krävs för att evtest ska se händelser).
+        # -------------------------------------------------------------------------
+        if [ "$CALIB_RETRY" -eq 0 ]; then
+            INPUT_REMAPPER_WAS_ACTIVE=0
+            if systemctl is-active --quiet input-remapper 2>/dev/null; then
+                INPUT_REMAPPER_WAS_ACTIVE=1
+                echo "  input-remapper is running — stopping temporarily for calibration..."
+                sudo systemctl stop input-remapper
+            fi
 
-    trap - INT TERM
-    rm -f /tmp/xbox-steam-calibrating
+            PAUSED_UNITS=()
+            while IFS= read -r u; do
+                PAUSED_UNITS+=("$u")
+            done < <(systemctl --user list-units 'xbox-steam@*.service' --state=active --no-legend --no-pager 2>/dev/null | awk '{print $1}')
+            if [ ${#PAUSED_UNITS[@]} -gt 0 ]; then
+                echo "  Pausing active binds for calibration..."
+                for u in "${PAUSED_UNITS[@]}"; do
+                    systemctl --user stop "$u" 2>/dev/null || true
+                done
+                sudo pkill -f "[e]vtest" 2>/dev/null || true
+            fi
+        fi
+        touch /tmp/xbox-steam-calibrating
 
-    restore_paused
+        calib_rc=0
+        calibrate || calib_rc=$?
 
-    if [ "$calib_rc" -eq 2 ]; then
-        echo ""
-        return 0
-    fi
-    if [ "$calib_rc" -ne 0 ]; then
-        echo ""
-        echo -e "   ${GRAY_BG}${WHITE_FG}Press Enter to return to the menu...${RESET_ALL}"
-        read -r -s </dev/tty || true
-        echo ""
-        return 0
-    fi
+        trap - INT TERM
+        rm -f /tmp/xbox-steam-calibrating
+
+        if [ "$calib_rc" -eq 2 ]; then
+            restore_paused
+            echo ""
+            return 0
+        fi
+        if [ "$calib_rc" -ne 0 ]; then
+            if back_or_retry; then
+                restore_paused
+                echo ""
+                return 0
+            fi
+            # Retry: återställ cursorn till slutet av headern och töm resten av
+            # skärmen. Headern (banner, enhetsrad, env, evtest/xpad) förblir orörd
+            # — inga nya rader ackumuleras mellan försöken.
+            CALIB_RETRY=1
+            printf '\0338' >/dev/tty
+            printf '\033[J' >/dev/tty
+            continue
+        fi
+        restore_paused
+        break
+    done
 
     if [ -z "$FIXED_DEVICE_ID" ] && [ -f "$DEVICES_DIR/$DEVICE_ID.conf" ]; then
         if ! confirm "This device is already bound. Replace the existing bind?"; then
