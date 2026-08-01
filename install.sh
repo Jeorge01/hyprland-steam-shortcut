@@ -11,6 +11,11 @@ GREEN=$'\e[38;2;94;227;149m'
 YELLOW=$'\e[38;2;244;208;63m'
 RED=$'\e[38;2;231;76;60m'
 WHITE=$'\e[1;37m'
+GRAY_BG=$'\e[48;2;42;42;42m'
+WHITE_FG=$'\e[38;2;255;255;255m'
+K_DIM=$'\e[38;2;97;97;97m'
+K_DIM2=$'\e[38;2;73;73;73m'
+RESET_ALL=$'\e[0m'
 CLEAR=$'\e[0m'
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/steam-shortcut"
@@ -23,6 +28,8 @@ RAW_URL="${HSS_RAW_URL:-https://raw.githubusercontent.com/Jeorge01/hyprland-stea
 HSS_URL="$RAW_URL/bind-manager.sh"
 UNINSTALL_URL="$RAW_URL/uninstall.sh"
 RUN_URL="$RAW_URL/run_steam.sh"
+
+declare -a INSTALLED=()
 
 log_info() {
     echo "$1" | fmt -w 57 | sed 's/^/   /'
@@ -102,6 +109,7 @@ if ! command -v gum &>/dev/null; then
     elif [ "$PKG_MANAGER" = "dnf" ]; then
         sudo dnf install -y gum
     fi
+    INSTALLED+=("gum — interactive prompt UI")
 fi
 
 if command -v evtest &> /dev/null; then
@@ -113,6 +121,7 @@ else
     elif [ "$PKG_MANAGER" = "dnf" ]; then
         sudo dnf install -y evtest
     fi
+    INSTALLED+=("evtest — controller input capture")
 fi
 
 echo "  Configuring xpad driver..."
@@ -125,6 +134,7 @@ else
     fi
     echo "Setting xpad to load automatically on boot..."
     echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf > /dev/null
+    INSTALLED+=("xpad driver — auto-load on boot")
 fi
 
 # -------------------------------------------------------------------------
@@ -151,6 +161,7 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 EOF
+    INSTALLED+=("systemd template unit — ${HYPR_BLUE}xbox-steam@.service${CLEAR}")
 
     log_info "Reloading systemd configuration..."
     if ! run_cmd systemctl --user daemon-reload; then
@@ -160,6 +171,7 @@ EOF
     log_info "Ensuring background execution via lingering..."
     if run_cmd loginctl enable-linger "$USER_NAME"; then
         log_info "Lingering enabled for $USER_NAME."
+        INSTALLED+=("loginctl linger — listener runs without login session")
     fi
 }
 
@@ -185,6 +197,7 @@ echo "  Adding sudoers rule for evtest..."
 SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
 echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
 sudo chmod 440 "$SU_FILE"
+INSTALLED+=("sudoers rule — passwordless evtest (${HYPR_BLUE}$SU_FILE${CLEAR})")
 
 # -------------------------------------------------------------------------
 # STEP 4: DEPLOY FILES
@@ -214,14 +227,18 @@ if ! deploy_file "bind-manager.sh" "$APP_DIR/bind-manager.sh" "$HSS_URL"; then
     echo -e "${RED}❌ Failed to deploy bind-manager.sh — aborting.${CLEAR}"
     exit 1
 fi
+INSTALLED+=("Bind Manager — ${HYPR_BLUE}$APP_DIR/bind-manager.sh${CLEAR}")
 
 if ! deploy_file "uninstall.sh" "$APP_DIR/uninstall.sh" "$UNINSTALL_URL"; then
     echo -e "${RED}❌ Failed to deploy uninstall.sh — aborting.${CLEAR}"
     exit 1
 fi
+INSTALLED+=("Uninstaller — ${HYPR_BLUE}$APP_DIR/uninstall.sh${CLEAR}")
 
 if ! deploy_file "run_steam.sh" "$APP_DIR/run_steam.sh" "$RUN_URL"; then
     echo -e "${YELLOW}⚠️  Failed to deploy run_steam.sh — binds will not work until it is present.${CLEAR}"
+else
+    INSTALLED+=("Steam launcher — ${HYPR_BLUE}$APP_DIR/run_steam.sh${CLEAR}")
 fi
 
 chmod +x "$APP_DIR/bind-manager.sh" "$APP_DIR/uninstall.sh" "$APP_DIR/run_steam.sh"
@@ -239,6 +256,7 @@ if [ -e "$HSS_BIN" ] && [ ! -L "$HSS_BIN" ]; then
     rm -f "$HSS_BIN"
 fi
 ln -sf "$APP_DIR/bind-manager.sh" "$HSS_BIN"
+INSTALLED+=("Launcher — ${HYPR_BLUE}$HSS_BIN${CLEAR}")
 
 # -------------------------------------------------------------------------
 # STEP 5: NOTES
@@ -271,8 +289,21 @@ case ":$PATH:" in
 esac
 
 echo ""
-echo -e "${GREEN}Installation complete.${CLEAR}"
+echo -e "  ${HYPR_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLEAR}"
+echo -e "  ${HYPR_BLUE}  Installed components${CLEAR}"
+echo -e "  ${HYPR_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLEAR}"
+for item in "${INSTALLED[@]}"; do
+    echo -e "  ${GREEN}󰄾${CLEAR} ${item}"
+done
+echo ""
+echo -e "  ${GREEN}Installation complete.${CLEAR}"
 echo -e "  Run '${HYPR_BLUE}hss${CLEAR}' anytime to open the Bind Manager."
+echo ""
+
+echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+printf '\033[?25l' >/dev/tty
+read -r -s -n1 </dev/tty || true
+printf '\033[?25h' >/dev/tty
 echo ""
 
 echo "Starting Bind Manager..."

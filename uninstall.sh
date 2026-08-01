@@ -167,7 +167,7 @@ if ! confirm "Uninstall hss?"; then
     exit 1
 fi
 
-echo -e "${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
+echo -e " ${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
 
 remove_all_binds
 
@@ -182,13 +182,13 @@ sudo rm -f /etc/systemd/system/xbox-steam.service 2>/dev/null || true
 sudo rm -f /etc/sudoers.d/xbox-steam-evtest 2>/dev/null || true
 
 if [ "$BIND_COUNT" -eq 0 ]; then
-    echo -e "${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"
+    echo -e " ${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"
 elif [ "$BIND_COUNT" -eq 1 ]; then
-    echo -e "${GREEN}Removed 1 bind and uninstalled successfully.${CLEAR}"
+    echo -e " ${GREEN}Removed 1 bind and uninstalled successfully.${CLEAR}"
 else
-    echo -e "${GREEN}Removed $BIND_COUNT binds and uninstalled successfully.${CLEAR}"
+    echo -e " ${GREEN}Removed $BIND_COUNT binds and uninstalled successfully.${CLEAR}"
 fi
-echo -e "${K_DIM}The 'hss' command and app files will be cleaned up automatically.${CLEAR}"
+echo -e " ${K_DIM}The 'hss' command and app files will be cleaned up automatically.${CLEAR}"
 
 press_enter
 
