@@ -665,14 +665,42 @@ USER_ID=$(id -u)
 # CALIBRATION
 # -------------------------------------------------------------------------
 
+# Monitors for input devices that appear after calibration has started and
+# spawns evtest on them. This makes it irrelevant when the controller is turned
+# on relative to when evtest was started — a device switched on during the
+# confirmation dialog (or while waiting for input) is still caught.
+# KNOWN: space-separated list of event nodes already being monitored.
+# FILTER_NAME: if set, only attach to nodes belonging to that device name.
+# Runs in the background until calibration finishes (killed by "kill $(jobs -p)").
+spawn_hotplug_evtest() {
+    local known="$1" filter_name="$2" ev
+    trap 'kill $(jobs -p) 2>/dev/null || true; exit 0' TERM INT
+    while :; do
+        sleep 0.2
+        for ev in /dev/input/event*; do
+            [ -e "$ev" ] || continue
+            case " $known " in
+                *" $ev "*) continue ;;
+            esac
+            if [ -z "$filter_name" ] || awk -v RS='' -v ev="${ev##*/}" -v name="$filter_name" \
+                'index($0, "N: Name=\"" name "\"") && $0 ~ "Handlers=.*" ev "( |$)"' /proc/bus/input/devices 2>/dev/null | grep -q .; then
+                sudo stdbuf -oL timeout 130 evtest "$ev" 2>/dev/null | stdbuf -oL sed "s|^|$ev: |" >> "$CALIB_EVTEST" &
+            fi
+            known="$known $ev"
+        done
+    done
+}
+
 # Spawns evtest for all (or the given) devices. Runs before the confirmation
 # dialog so the evtest startup is hidden behind it — a button press right after
-# "Calibrate" is then caught without delay.
+# "Calibrate" is then caught without delay. A hotplug watcher keeps attaching
+# evtest to devices that are turned on after this point.
 # Sets CALIB_EVTEST (temp file) and DEV_COUNT (number of spawned devices).
 # Returns 1 if a given device is not connected.
 spawn_calib_evtest() {
     CALIB_EVTEST=$(mktemp)
     DEV_COUNT=0
+    CALIB_MONITORED=""
     if [ -n "$FIXED_DEVICE_ID" ]; then
         FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
         [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
@@ -687,15 +715,19 @@ spawn_calib_evtest() {
             if [ -e "/dev/input/$evnode" ]; then
                 sudo stdbuf -oL timeout 130 evtest "/dev/input/$evnode" 2>/dev/null | stdbuf -oL sed "s|^|/dev/input/$evnode: |" >> "$CALIB_EVTEST" &
                 DEV_COUNT=$((DEV_COUNT + 1))
+                CALIB_MONITORED="$CALIB_MONITORED /dev/input/$evnode"
             fi
         done
+        spawn_hotplug_evtest "$CALIB_MONITORED" "$FIXED_NAME" &
     else
         for ev in /dev/input/event*; do
             if [ -r "$ev" ] || [ "$(id -u)" = "0" ] || command -v sudo &>/dev/null; then
                 sudo stdbuf -oL timeout 130 evtest "$ev" 2>/dev/null | stdbuf -oL sed "s|^|$ev: |" >> "$CALIB_EVTEST" &
                 DEV_COUNT=$((DEV_COUNT + 1))
+                CALIB_MONITORED="$CALIB_MONITORED $ev"
             fi
         done
+        spawn_hotplug_evtest "$CALIB_MONITORED" "" &
     fi
     return 0
 }
@@ -1109,11 +1141,10 @@ bind_flow() {
         FIXED_NAME=$(grep "^TARGET_DEV_NAME=" "$DEVICES_DIR/$FIXED_DEVICE_ID.conf" 2>/dev/null | cut -d'"' -f2)
         [ -z "$FIXED_NAME" ] && FIXED_NAME="$FIXED_DEVICE_ID"
         echo -e "   Rebinding device: ${WHITE}${FIXED_NAME}${CLEAR}"
-    else
-        echo -e "   Before we begin, make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
-        echo -e "   You will have ${YELLOW}60 seconds${CLEAR} to press a button."
-        echo -e "   Supports ${YELLOW}single${CLEAR} or ${YELLOW}combo${CLEAR} binds (hold first button + press second)."
     fi
+    echo -e "   Make sure your input device is turned ${GREEN}ON${CLEAR} and connected."
+    echo -e "   You will have ${YELLOW}60 seconds${CLEAR} to press a button."
+    echo -e "   Supports ${YELLOW}single${CLEAR} or ${YELLOW}combo${CLEAR} binds (hold first button + press second)."
 
     printf '\0337' >/dev/tty  # save cursor position (end of header)
 
