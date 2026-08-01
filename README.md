@@ -45,18 +45,18 @@ You can install or update the shortcut trigger automatically using the following
 Open your terminal and run (works on both Arch Linux and Fedora):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/bind-manager.sh | bash
 ```
-You could also clone or download the install.sh file and run it like this
+You could also clone or download the bind-manager.sh file and run it like this
 
 ```bash
 # Clone the repository
 git clone https://github.com/Jeorge01/hyprland-steam-shortcut.git
 cd hyprland-steam-shortcut
 
-# Make the installer executable and run it
-chmod +x install.sh
-./install.sh
+# Make the script executable and run it
+chmod +x bind-manager.sh
+./bind-manager.sh
 ```
 
 ## Why This Exists

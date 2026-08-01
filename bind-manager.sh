@@ -860,7 +860,7 @@ show_banner() {
     art_line "▖▖      ▜      ▌  ▄▖▗          ▄▖▌     ▗     ▗ " 6 12 18 22 26 31 37 43
     art_line "▙▌▌▌▛▌▛▘▐ ▀▌▛▌▛▌  ▚ ▜▘█▌▀▌▛▛▌  ▚ ▛▌▛▌▛▘▜▘▛▘▌▌▜▘" 6 12 18 22 26 31 37 43
     art_line "▌▌▙▌▙▌▌ ▐▖█▌▌▌▙▌  ▄▌▐▖▙▖█▌▌▌▌  ▄▌▌▌▙▌▌ ▐▖▙▖▙▌▐▖" 6 12 18 22 26 31 37 43
-    printf '  %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "▄▌▌  " "${HYPR_BLUE}" "Ins" "${HYPR_DARK_BLUE}" "ta" "${HYPR_DARKEST_BLUE}" "ll" "${HYPR_BLUE}" " sc" "${HYPR_DARK_BLUE}" "ri" "${HYPR_DARKEST_BLUE}" "pt" "${CLEAR}"
+    printf '  %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "▄▌▌  " "${HYPR_BLUE}" "Bi" "${HYPR_DARK_BLUE}" "n" "${HYPR_DARKEST_BLUE}" "d" "${HYPR_BLUE}" " ma" "${HYPR_DARK_BLUE}" "na" "${HYPR_DARKEST_BLUE}" "ger" "${CLEAR}"
 }
 
 show_banner
