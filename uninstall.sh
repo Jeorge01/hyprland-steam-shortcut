@@ -79,7 +79,7 @@ confirm() {
 
 press_enter() {
     echo ""
-    echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+    echo -e " ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
     printf '\033[?25l' >/dev/tty
     read -r -s -n1 </dev/tty || true
     printf '\033[?25h' >/dev/tty

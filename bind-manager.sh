@@ -1241,7 +1241,7 @@ for code in "$CHECK_BTN_CODE" "${MODIFIER_BTN_CODE:-}"; do
         echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
         echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
         echo -e ""
-        echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+        echo -e "   ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
         printf '\033[?25l' >/dev/tty
         read -r -s -n1 </dev/tty || true
         printf '\033[?25h' >/dev/tty
@@ -1433,7 +1433,7 @@ EOFC
     fi
     echo "   If it doesn't work, check the log: cat ~/steam_error.log"
     echo ""
-    echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+    echo -e "   ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
     printf '\033[?25l' >/dev/tty
     read -r -s -n1 </dev/tty || true
     printf '\033[?25h' >/dev/tty
