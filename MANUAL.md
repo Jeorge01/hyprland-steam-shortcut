@@ -119,14 +119,16 @@ TARGET_BTN_NAME="BTN_MODE"
 ### Download the Trigger Script
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/run_steam.sh -o ~/run_steam.sh
-chmod +x ~/run_steam.sh
+mkdir -p ~/.local/share/hss
+curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/run_steam.sh -o ~/.local/share/hss/run_steam.sh
+chmod +x ~/.local/share/hss/run_steam.sh
 ```
 
 > If you cloned the repository, copy the file instead:
 > ```bash
-> cp /path/to/repo/run_steam.sh ~/run_steam.sh
-> chmod +x ~/run_steam.sh
+> mkdir -p ~/.local/share/hss
+> cp /path/to/repo/run_steam.sh ~/.local/share/hss/run_steam.sh
+> chmod +x ~/.local/share/hss/run_steam.sh
 > ```
 
 ---
@@ -145,7 +147,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash %h/run_steam.sh listen
+ExecStart=/bin/bash %h/.local/share/hss/run_steam.sh listen
 ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-pids.txt"; if [ -f "$pid_file" ]; then xargs kill < "$pid_file" 2>/dev/null; rm -f "$pid_file"; fi'
 KillMode=process
 Restart=always

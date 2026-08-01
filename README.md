@@ -39,24 +39,25 @@ Hyprland's built-in `bind` only supports keyboard keys and mouse buttons while g
 
 # Installation
 
-You can install or update the shortcut trigger automatically using the following command.
+The one-line installer downloads the Bind Manager, sets up the systemd user service, sudoers rule and driver config, and installs a `hss` command for managing everything later.
 
 ### Quick Installation (Recommended)
 Open your terminal and run (works on both Arch Linux and Fedora):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/bind-manager.sh | bash
+curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash
 ```
-You could also clone or download the bind-manager.sh file and run it like this
+The installer finishes by launching the Bind Manager. After that, run `hss` anytime to open it again.
+
+You could also clone or download the repository and run `install.sh` like this:
 
 ```bash
 # Clone the repository
 git clone https://github.com/Jeorge01/hyprland-steam-shortcut.git
 cd hyprland-steam-shortcut
 
-# Make the script executable and run it
-chmod +x bind-manager.sh
-./bind-manager.sh
+# Run the installer
+./install.sh
 ```
 
 ## Why This Exists
@@ -75,10 +76,12 @@ This project works around both limitations by reading raw input events via `evte
 
 ## Interactive Menu
 
-When you run the installer, you'll see an interactive menu with two options:
+Running `hss` opens an interactive menu with four options:
 
 - **Bind device** - Calibrate and install the button trigger
-- **Unbind** - Remove the installation completely (service, sudoers, scripts, logs)
+- **Show bound devices** - Manage, toggle or remove a bind
+- **Uninstall all binds** - Remove every bind, keep the program
+- **Uninstall hss** - Remove the whole installation (binds, service, sudoers, scripts, logs)
 
 Behind the scenes, the installer uses [`evtest`][evtest] to capture raw input events and [`gum`][gum] for the interactive prompts — both are automatically installed if missing.
 

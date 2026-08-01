@@ -32,6 +32,7 @@ SEL_ARROW=$'\uf0da'
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/steam-shortcut"
 DEVICES_DIR="$CONFIG_DIR/devices"
+APP_DIR="$HOME/.local/share/hss"
 
 log_info() {
     echo "$1" | fmt -w 57 | sed 's/^/   /'
@@ -254,67 +255,6 @@ EOFCFG
     fi
     systemctl --user disable --now xbox-steam.service 2>/dev/null || true
     rm -f "$HOME/.config/systemd/user/xbox-steam.service"
-}
-
-uninstall_all() {
-    clear
-    banner_uninstall
-    echo -e "${YELLOW}This will remove:${CLEAR}"
-    echo -e "  - all device binds (xbox-steam@<device>.service)"
-    echo -e "  - systemd template unit (xbox-steam@.service)"
-    echo -e "  - sudoers rule (/etc/sudoers.d/xbox-steam-evtest)"
-    echo -e "  - automation script (~/run_steam.sh)"
-    echo -e "  - config directory (~/.config/steam-shortcut)"
-    echo -e "  - log file (~/steam_error.log)"
-    echo ""
-
-    if ! confirm "Are you sure?"; then
-        echo -e "${YELLOW}Aborted.${CLEAR}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
-
-    local bind_count=0
-    for conf in "$DEVICES_DIR"/*.conf; do
-        [ -e "$conf" ] || continue
-        id=$(basename "$conf" .conf)
-        systemctl --user disable --now "xbox-steam@$id.service" 2>/dev/null || true
-        bind_count=$((bind_count + 1))
-    done
-    systemctl --user stop 'xbox-steam@*.service' 2>/dev/null || true
-    systemctl --user disable --now 'xbox-steam@*.service' 2>/dev/null || true
-
-    rm -f "$HOME/.config/systemd/user/xbox-steam@.service"
-    rm -f "$HOME/.config/systemd/user/xbox-steam.service"
-    systemctl --user daemon-reload 2>/dev/null || true
-
-    rm -f "$HOME/run_steam.sh"
-    rm -f "$HOME/steam_error.log"
-    rm -rf "$CONFIG_DIR"
-
-    sudo rm -f /etc/systemd/system/xbox-steam.service 2>/dev/null || true
-    sudo rm -f /etc/sudoers.d/xbox-steam-evtest 2>/dev/null || true
-
-    for pf in /tmp/xbox-steam-pids.txt /tmp/xbox-steam-*-pids.txt; do
-        [ -e "$pf" ] || continue
-        xargs kill < "$pf" 2>/dev/null || true
-        rm -f "$pf"
-    done
-    rm -f /tmp/xbox-steam-calibrating
-
-    if [ "$bind_count" -eq 0 ]; then
-        echo -e "${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"
-    elif [ "$bind_count" -eq 1 ]; then
-        echo -e "${GREEN}Removed 1 bind and uninstalled successfully.${CLEAR}"
-    else
-        echo -e "${GREEN}Removed $bind_count binds and uninstalled successfully.${CLEAR}"
-    fi
-    echo ""
-    echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
-    printf '\033[?25l' >/dev/tty
-    read -r -s -n1 </dev/tty || true
-    printf '\033[?25h' >/dev/tty
 }
 
 toggle_bind() {
@@ -552,261 +492,6 @@ manage_binds() {
     done
 }
 
-remove_legacy_service() {
-    if [ -f "$HOME/.config/systemd/user/xbox-steam.service" ]; then
-        echo "󰃢  Cleaning up the old single-device service..."
-        systemctl --user disable --now xbox-steam.service 2>/dev/null || true
-        rm -f "$HOME/.config/systemd/user/xbox-steam.service"
-    fi
-    if systemctl is-enabled xbox-steam.service &>/dev/null || [ -f /etc/systemd/system/xbox-steam.service ]; then
-        echo "󰃢  Cleaning up the old global system service..."
-        sudo systemctl disable --now xbox-steam.service 2>/dev/null || true
-        sudo rm -f /etc/systemd/system/xbox-steam.service
-        sudo systemctl daemon-reload
-    fi
-}
-
-download_run_script() {
-    local DOWNLOAD_OK=0
-    local SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-
-    log_info "Downloading run_steam.sh..."
-
-    if [ -f "$SCRIPT_DIR/run_steam.sh" ]; then
-        log_info "Copying run_steam.sh from local repo..."
-        cp "$SCRIPT_DIR/run_steam.sh" "$HOME/run_steam.sh"
-        DOWNLOAD_OK=1
-    fi
-
-    if [ "$DOWNLOAD_OK" -eq 0 ] && command -v curl &>/dev/null; then
-        if curl -sL "https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/run_steam.sh" -o "$HOME/run_steam.sh" 2>/dev/null; then
-            DOWNLOAD_OK=1
-        fi
-    fi
-
-    if [ "$DOWNLOAD_OK" -eq 0 ]; then
-        log_info "Download failed — creating run_steam.sh inline..."
-        cat > "$HOME/run_steam.sh" << 'FALLBACK'
-#!/bin/bash
-
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/steam-shortcut"
-SCRIPT_PATH="$(realpath "$0")"
-
-if [ -f "$CONFIG_DIR/config" ]; then
-    source "$CONFIG_DIR/config"
-fi
-
-if [ "$1" == "listen" ]; then
-    DEVICE_ID="${2:-}"
-    if [ -z "$DEVICE_ID" ]; then
-        echo "Error: missing device id. Usage: run_steam.sh listen <device-id>" >&2
-        exit 1
-    fi
-
-    CONFIG_FILE="$CONFIG_DIR/devices/$DEVICE_ID.conf"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: Config file not found at $CONFIG_FILE" >&2
-        exit 1
-    fi
-    source "$CONFIG_FILE"
-
-    PID_FILE="/tmp/xbox-steam-$DEVICE_ID-pids.txt"
-
-    echo "Starting listener for $TARGET_DEV_NAME ($DEVICE_ID)..."
-
-    while true; do
-        until awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices >/dev/null 2>&1; do
-            echo "Waiting for your controller ($TARGET_DEV_NAME) to initialize..."
-            sleep 2
-        done
-
-        EVENT_NUMS=$(awk -v name="$TARGET_DEV_NAME" 'BEGIN{IGNORECASE=0} index($0, "N: Name=\"" name) == 1 {cat=1} cat && /Handlers=/{for(i=1;i<=NF;i++) if($i~/event/) print $i; cat=0}' /proc/bus/input/devices | grep -oE '[0-9]+')
-
-        for NUM in $EVENT_NUMS; do
-            until [ -r "/dev/input/event$NUM" ]; do
-                echo "Waiting for /dev/input/event$NUM to become readable..."
-                sleep 0.2
-            done
-        done
-
-        echo "Your calibrated device is ready! Initializing listener..."
-
-        if systemctl is-active --quiet input-remapper 2>/dev/null; then
-            echo "⚠️ WARNING: input-remapper is running and may block button detection"
-            echo "   Run: sudo systemctl stop input-remapper"
-        fi
-
-        echo "" > "$PID_FILE"
-        LISTENER_PIDS=""
-
-        for NUM in $EVENT_NUMS; do
-            if [ -e "/dev/input/event$NUM" ]; then
-                echo "Listening on /dev/input/event$NUM"
-                (
-                    sudo evtest /dev/input/event$NUM 2>/dev/null | while read -r line; do
-                        [ -f /tmp/xbox-steam-calibrating ] && continue
-                        if [ "$BIND_MODE" = "combo" ]; then
-                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
-                                MODIFIER_HELD=1
-                            fi
-                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 0"; then
-                                MODIFIER_HELD=0
-                            fi
-                            if echo "$line" | grep -q "code $TRIGGER_BTN_CODE.*value 1"; then
-                                if [ "${MODIFIER_HELD:-0}" -eq 1 ]; then
-                                    MODIFIER_HELD=0
-                                    /bin/bash "$SCRIPT_PATH" trigger &
-                                fi
-                            fi
-                        else
-                            if echo "$line" | grep -q "code $TARGET_BTN_CODE.*value 1"; then
-                                /bin/bash "$SCRIPT_PATH" trigger &
-                            fi
-                        fi
-                    done
-                ) &
-                LISTENER_PIDS="$LISTENER_PIDS $!"
-            fi
-        done
-        echo "$LISTENER_PIDS" > "$PID_FILE"
-
-        while true; do
-            sleep 2
-            STILL_CONNECTED=1
-            for NUM in $EVENT_NUMS; do
-                if [ ! -e "/dev/input/event$NUM" ]; then
-                    STILL_CONNECTED=0
-                    break
-                fi
-            done
-            if [ $STILL_CONNECTED -eq 0 ]; then
-                echo "⚠️ Device disconnected! Cleaning up background processes..."
-                for pid in $LISTENER_PIDS; do
-                    kill $pid 2>/dev/null
-                done
-                echo "  Re-scanning hardware..."
-                break
-            fi
-        done
-    done
-    exit 0
-fi
-
-# --- TRIGGER EXECUTION ---
-if [ "$1" == "trigger" ]; then
-    USER_NAME="${USER_NAME:-$(id -un)}"
-    [ -f /tmp/xbox-steam-calibrating ] && exit 0
-    [ -f "$HOME/steam_error.log" ] && [ $(stat -c%s "$HOME/steam_error.log" 2>/dev/null || echo 0) -gt 524288 ] && mv "$HOME/steam_error.log" "$HOME/steam_error.log.old"
-
-    exec >> "$HOME/steam_error.log" 2>&1
-    echo "========================================="
-    echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
-    echo "Timestamp: $(date)"
-    echo "─────────────────────────────────────────"
-
-    export WAYLAND_DISPLAY=$(systemctl --user show-environment | grep '^WAYLAND_DISPLAY=' | cut -d= -f2)
-    export DISPLAY=$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-
-    if [ -z "$WAYLAND_DISPLAY" ]; then
-        COMPOSITOR_PID=$(pgrep -u "$USER" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
-
-        if [ -n "$COMPOSITOR_PID" ]; then
-            export WAYLAND_DISPLAY=$(grep -z '^WAYLAND_DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-            export DISPLAY=$(grep -z '^DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-            export HYPRLAND_INSTANCE_SIGNATURE=$(grep -z '^HYPRLAND_INSTANCE_SIGNATURE=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-        fi
-    fi
-
-    [ -z "$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY="wayland-0"
-    [ -z "$DISPLAY" ] && export DISPLAY=":0"
-
-    CURRENT_ACTIVE_WS=$(hyprctl monitors | awk '/active workspace:/ {print $3; exit}')
-    TARGET_WORKSPACE=${CURRENT_ACTIVE_WS:-"1"}
-    echo "Current active workspace in focus: $TARGET_WORKSPACE"
-
-    PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
-
-    if [ -n "$PID_LIST" ]; then
-        echo "Steam is running. Searching for Steam window workspace..."
-
-        STEAM_WS=$(hyprctl clients | awk '
-            /^Window/ {
-                if (is_steam && ws != "") { last_steam_ws = ws }
-                is_steam = 0
-                ws = ""
-            }
-            /workspace:/ { ws = $2 }
-            /class: [Ss]team/ { is_steam = 1 }
-            END {
-                if (is_steam && ws != "") { last_steam_ws = ws }
-                print (last_steam_ws != "") ? last_steam_ws : "unknown"
-            }
-        ')
-
-        if [ -n "$STEAM_WS" ] && [ "$STEAM_WS" -eq "$STEAM_WS" ] 2>/dev/null; then
-            TARGET_WORKSPACE="$STEAM_WS"
-            echo "Found Steam on Workspace: $TARGET_WORKSPACE"
-        else
-            echo "Steam is running but no open window found yet. Staying on current workspace."
-        fi
-    else
-        echo "Steam is not running. It will be launched on the current workspace ($TARGET_WORKSPACE)."
-    fi
-
-    echo "Forcing focus to Hyprland Workspace $TARGET_WORKSPACE via modern Lua eval..."
-    hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $TARGET_WORKSPACE }))"
-    hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
-    hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" 2>/dev/null || true
-
-    if [ -n "$PID_LIST" ]; then
-        echo "Status: Triggering Big Picture..."
-        steam steam://open/bigpicture >/dev/null 2>&1 &
-    else
-        echo "Status: Launching Big Picture from scratch..."
-        systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
-    fi
-    echo "=== TRIGGER COMPLETE ==="
-    echo "========================================="
-fi
-FALLBACK
-    fi
-
-    chmod +x "$HOME/run_steam.sh"
-}
-
-install_service_unit() {
-    mkdir -p "$HOME/.config/systemd/user"
-
-    log_info "Creating/Updating systemd template unit (xbox-steam@.service)..."
-    cat << EOF > "$HOME/.config/systemd/user/xbox-steam@.service"
-[Unit]
-Description=Steam Big Picture Trigger (%i)
-After=default.target
-
-[Service]
-Type=simple
-ExecStart=/bin/bash $HOME/run_steam.sh listen %i
-ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-%i-pids.txt"; if [ -f "\$pid_file" ]; then xargs kill < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi'
-KillMode=process
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-EOF
-
-    log_info "Reloading systemd configuration..."
-    if ! run_cmd systemctl --user daemon-reload; then
-        log_info "[!] Failed to reload systemd configuration."
-    fi
-
-    log_info "Ensuring background execution via lingering..."
-    if run_cmd loginctl enable-linger "$USER_NAME"; then
-        log_info "Lingering enabled for $USER_NAME."
-    fi
-}
-
 # -------------------------------------------------------------------------
 # ASCII ART BANNERS
 # -------------------------------------------------------------------------
@@ -822,16 +507,6 @@ art_line() {
     done
     out+="${colors[$((i % 3))]}${line:prev}"
     printf '%s%s\n' "$out" "$CLEAR"
-}
-
-banner_uninstall() {
-    echo -e "${HYPR_BLUE}"
-
-    art_line "▖▖  ▘    ▗   ▜ ▜" 5 11
-    art_line "▌▌▛▌▌▛▌▛▘▜▘▀▌▐ ▐" 5 11
-    art_line "▙▌▌▌▌▌▌▄▌▐▖█▌▐▖▐▖" 5 11
-    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "Re" "${HYPR_DARK_BLUE}" "mo" "${HYPR_DARKEST_BLUE}" "ve" "${HYPR_BLUE}" " al" "${HYPR_DARK_BLUE}" "l" "${HYPR_BLUE}" " bi" "${HYPR_DARK_BLUE}" "nd" "${HYPR_DARKEST_BLUE}" "s" "${CLEAR}"
-    echo ""
 }
 
 banner_calibration() {
@@ -975,16 +650,6 @@ fi
 
 USER_NAME=$(id -un)
 USER_ID=$(id -u)
-
-# Install gum for interactive menu
-if ! command -v gum &>/dev/null; then
-    echo -e "${YELLOW}  gum not found — installing for better UI...${CLEAR}"
-    if [ "$PKG_MANAGER" = "pacman" ]; then
-        sudo pacman -S --needed --noconfirm gum
-    elif [ "$PKG_MANAGER" = "dnf" ]; then
-        sudo dnf install -y gum
-    fi
-fi
 
 # -------------------------------------------------------------------------
 # CALIBRATION
@@ -1381,29 +1046,6 @@ done
 print_bind_header() {
     banner_calibration
     echo -e "󰌽  Detected OS environment: ${HYPR_BLUE}${DISTRO}${CLEAR} (using ${PKG_MANAGER})"
-
-    if command -v evtest &> /dev/null; then
-        echo "  evtest is already installed, skipping..."
-    else
-        echo "  evtest is missing. Installing via $PKG_MANAGER..."
-        if [ "$PKG_MANAGER" = "pacman" ]; then
-            sudo pacman -S --needed --noconfirm evtest
-        elif [ "$PKG_MANAGER" = "dnf" ]; then
-            sudo dnf install -y evtest
-        fi
-    fi
-
-    echo "  Configuring xpad driver..."
-    if [ -f "/etc/modules-load.d/xpad.conf" ]; then
-        echo "  xpad is already configured for auto-load, skipping..."
-    else
-        if ! lsmod | grep -q "xpad"; then
-            echo "Loading xpad into the kernel..."
-            sudo modprobe xpad || log_info "[!] Failed to load xpad module"
-        fi
-        echo "Setting xpad to load automatically on boot..."
-        echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf > /dev/null
-    fi
 }
 
 bind_flow() {
@@ -1520,15 +1162,6 @@ TRIGGER_BTN_CODE="$TRIGGER_BTN_CODE"
 TRIGGER_BTN_NAME="$TRIGGER_BTN_NAME"
 EOFC
 
-    download_run_script
-    install_service_unit
-    remove_legacy_service
-
-    echo "  Adding sudoers rule for evtest..."
-    SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
-    echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
-    sudo chmod 440 "$SU_FILE"
-
     log_info "Enabling bind for $DEVICE_ID..."
     systemctl --user enable "xbox-steam@$DEVICE_ID.service" &>/dev/null || true
     if ! run_cmd systemctl --user restart "xbox-steam@$DEVICE_ID.service"; then
@@ -1567,7 +1200,8 @@ main_menu() {
     local -a items=(
         "  Bind device — Install and calibrate button trigger"
         "  Show bound devices — Manage, toggle or remove binds"
-        "  Uninstall everything — Remove the whole installation"
+        "  Uninstall all binds — Remove all binds, keep the program"
+        "󰗽  Uninstall hss — Remove the whole installation"
     )
     local count=${#items[@]} sel=0 key res="" i
 
@@ -1624,6 +1258,14 @@ main_menu() {
 
 migrate_legacy
 
+# Gate: bind-manager requires install.sh to have run once (systemd unit present).
+if [ ! -f "$HOME/.config/systemd/user/xbox-steam@.service" ]; then
+    echo -e "${YELLOW}⚠️  Setup not detected.${CLEAR}"
+    echo -e "   Run the installer first:"
+    echo -e "     ${HYPR_BLUE}curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash${CLEAR}"
+    exit 1
+fi
+
 while true; do
     CHOICE=$(main_menu)
 
@@ -1634,8 +1276,12 @@ while true; do
         *"Show bound devices"*)
             manage_binds
             ;;
-        *"Uninstall everything"*)
-            uninstall_all
+        *"Uninstall all binds"*)
+            "$APP_DIR/uninstall.sh" binds
+            ;;
+        *"Uninstall hss"*)
+            "$APP_DIR/uninstall.sh" all
+            exit 0
             ;;
         "EXIT")
             exit 0
