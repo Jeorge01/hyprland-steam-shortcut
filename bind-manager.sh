@@ -145,7 +145,7 @@ bind_status() {
         state_word="${RED}inactive${CLEAR}"
     fi
 
-    if [ -n "$name" ] && awk -v name="$name" 'index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices 2>/dev/null | grep -q .; then
+    if [ -n "$name" ] && awk -v name="$name" '$0 == "N: Name=\"" name "\""' /proc/bus/input/devices 2>/dev/null | grep -q .; then
         connected="${GREEN}connected${CLEAR}"
     else
         connected="${YELLOW}disconnected${CLEAR}"
@@ -268,7 +268,14 @@ toggle_bind() {
 
 read_key() {
     local key extra extra2
-    IFS= read -r -s -n1 key </dev/tty
+    local read_args=(-r -s -n1)
+    if [ -n "${1:-}" ]; then
+        read_args+=(-t "$1")
+    fi
+    if ! IFS= read "${read_args[@]}" key </dev/tty; then
+        echo "TIMEOUT"
+        return 0
+    fi
     if [ "$key" = $'\e' ]; then
         if IFS= read -r -s -n1 -t 0.1 extra </dev/tty; then
             if [ "$extra" = "[" ]; then
@@ -309,14 +316,32 @@ blue_line() {
 device_menu() {
     local -a it=("$@")
     local count=${#it[@]}
-    local sel=0
+    local sel=0 last_sel=-1
     local key res=""
 
     printf '\033[?25l' >/dev/tty
     printf '\033[H\033[J' >/dev/tty
 
     render() {
-        local i first line selected
+        local i first line selected repaint=0
+        if [ "$sel" -ne "$last_sel" ]; then
+            repaint=1
+        fi
+        if [ -n "${REFRESH_CB:-}" ]; then
+            local -a saved
+            saved=("${it[@]}")
+            "$REFRESH_CB" it
+            count=${#it[@]}
+            if [ "${#it[@]}" -ne "${#saved[@]}" ]; then
+                repaint=1
+            else
+                for i in "${!it[@]}"; do
+                    [ "${it[$i]}" != "${saved[$i]}" ] && repaint=1
+                done
+            fi
+        fi
+        last_sel="$sel"
+        [ "$repaint" -eq 0 ] && return 0
         printf '\033[H' >/dev/tty
         banner_bound_devices >/dev/tty
         for i in "${!it[@]}"; do
@@ -352,8 +377,10 @@ device_menu() {
     while IFS= read -r -s -n1 -t 0.001 _ </dev/tty; do :; done 2>/dev/null || true
 
     while [ -z "$res" ]; do
-        key=$(read_key)
+        key=$(read_key 0.5)
         case "$key" in
+            TIMEOUT)
+                ;;
             UP)
                 [ "$sel" -gt 0 ] && sel=$((sel - 1))
                 ;;
@@ -368,7 +395,7 @@ device_menu() {
                     if [ -n "${TOGGLE_CB:-}" ]; then
                         local new_item
                         new_item="$("$TOGGLE_CB" "$sel")"
-                        if [ -n "$new_item" ]; then
+                        if [ -n "$new_item" ] && [ -z "${REFRESH_CB:-}" ]; then
                             it[$sel]="$new_item"
                         fi
                         drain_keys
@@ -439,6 +466,22 @@ manage_binds() {
         local id="${ids[$idx]}"
         toggle_bind "$id"
         bind_status "$id" "$DEVICES_DIR/$id.conf"
+    }
+
+    # Live-refresh of the bound devices list: called on an idle timer so
+    # connected/disconnected (and active/inactive) updates without leaving the
+    # menu. Only repaints when something actually changed.
+    local REFRESH_CB=refresh_menu_items
+    refresh_menu_items() {
+        local -n items_ref="$1"
+        local -a new_items=()
+        local conf id
+        for conf in "${confs[@]}"; do
+            id=$(basename "$conf" .conf)
+            new_items+=("$(bind_status "$id" "$conf")")
+        done
+        new_items+=("⟵ Back")
+        items_ref=("${new_items[@]}")
     }
 
     while true; do
