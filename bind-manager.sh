@@ -139,10 +139,10 @@ bind_status() {
 
     if systemctl --user is-active --quiet "xbox-steam@$id.service" 2>/dev/null; then
         state_icon="${GREEN}●${CLEAR}"
-        state_word="active"
+        state_word="${GREEN}active  ${CLEAR}"
     else
         state_icon="${RED}●${CLEAR}"
-        state_word="inactive"
+        state_word="${RED}inactive${CLEAR}"
     fi
 
     if [ -n "$name" ] && awk -v name="$name" 'index($0, "N: Name=\"" name) == 1' /proc/bus/input/devices 2>/dev/null | grep -q .; then
