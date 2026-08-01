@@ -120,6 +120,17 @@ confirm_dialog() {
 # HELPERS
 # -------------------------------------------------------------------------
 
+# Switches to the terminal's alternate screen buffer: while the program runs
+# only it is visible, and anything written in the terminal before launch stays
+# hidden but preserved (like vim/less). Leaving the buffer on exit restores
+# the previous terminal content instead of deleting it.
+alt_screen_on() {
+    printf '\033[?1049h\033[H\033[2J' >/dev/tty 2>/dev/null || true
+}
+alt_screen_off() {
+    printf '\033[?1049l' >/dev/tty 2>/dev/null || true
+}
+
 # Normalizes a per-instance identity (input Uniq or USB serial) into a safe
 # systemd instance-name part: lowercase, alnum kept, runs of other chars -> '-'.
 sanitize_id_part() {
@@ -718,6 +729,13 @@ show_banner() {
     printf '  %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' "${HYPR_BLUE}" "▄▌▌  " "${HYPR_BLUE}" "Bi" "${HYPR_DARK_BLUE}" "n" "${HYPR_DARKEST_BLUE}" "d" "${HYPR_BLUE}" " ma" "${HYPR_DARK_BLUE}" "na" "${HYPR_DARKEST_BLUE}" "ger" "${CLEAR}"
 }
 
+# Interactive runs switch to the alternate screen buffer — the terminal's
+# previous content is hidden while the program runs and restored on exit.
+# --version/--status keep their output intact.
+if [ "${1:-}" != "--version" ] && [ "${1:-}" != "--status" ]; then
+    alt_screen_on
+fi
+
 show_banner
 
 # Handle --version flag
@@ -779,6 +797,11 @@ cleanup() {
 
     kill $(jobs -p) 2>/dev/null || true
     kill "$SUDO_KEEP_ALIVE_PID" 2>/dev/null || true
+
+    # Interactive runs restore the terminal's previous content on exit.
+    if [ "${HSS_INTERACTIVE:-0}" -eq 1 ]; then
+        alt_screen_off
+    fi
 }
 
 trap cleanup EXIT
@@ -1546,6 +1569,9 @@ if [ ! -f "$HOME/.config/systemd/user/xbox-steam@.service" ]; then
     echo -e "     ${HYPR_BLUE}curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash${CLEAR}"
     exit 1
 fi
+
+# Interactive TUI session reached — clear the terminal on exit.
+HSS_INTERACTIVE=1
 
 while true; do
     CHOICE=$(main_menu)
