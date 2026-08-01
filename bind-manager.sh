@@ -742,6 +742,8 @@ else
 fi
 echo ""
 else
+echo ""
+echo ""
 set +e
 if ! spawn_calib_evtest; then
     set -e
@@ -998,13 +1000,17 @@ for code in "$CHECK_BTN_CODE" "${MODIFIER_BTN_CODE:-}"; do
         fi
         echo -e ""
         echo -e "${RED}╭─────────────────────────────────────────────────────────────────╮${CLEAR}"
-        echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${name}${CLEAR}' (code ${WHITE}${code}${CLEAR}) is blacklisted.                ${RED}│${CLEAR}"
+        echo -e "${RED}│${CLEAR} ❌ Button '${WHITE}${name}${CLEAR}' (code ${WHITE}${code}${CLEAR}) is blacklisted.                 ${RED}│${CLEAR}"
         echo -e "${RED}│${CLEAR}    Binding this button would interfere with normal input.       ${RED}│${CLEAR}"
         echo -e "${RED}│${CLEAR}    Please choose a different button (e.g. Guide, Share, etc.)   ${RED}│${CLEAR}"
         echo -e "${RED}╰─────────────────────────────────────────────────────────────────╯${CLEAR}"
         echo -e ""
-        echo -e "   ${YELLOW}Press a different button to continue...${CLEAR}"
-        echo -e ""
+        echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+        printf '\033[?25l' >/dev/tty
+        read -r -s -n1 </dev/tty || true
+        printf '\033[?25h' >/dev/tty
+        printf '\0338' >/dev/tty
+        printf '\033[J' >/dev/tty
         IS_REDO=1
         continue 2
     fi
@@ -1037,8 +1043,8 @@ else
 fi
 
 if [[ "$BIND_CONFIRM" == *"Redo"* ]]; then
-    echo -e "  ${YELLOW}Redoing calibration...${CLEAR}"
-    echo -e ""
+    printf '\0338' >/dev/tty
+    printf '\033[J' >/dev/tty
     IS_REDO=1
     continue
 fi
@@ -1183,24 +1189,10 @@ EOFC
     echo "   Your device is mapped dynamically."
     echo "   If it doesn't work, check the log: cat ~/steam_error.log"
     echo ""
-    if command -v gum &>/dev/null; then
-        if gum confirm "Installation complete" \
-            --affirmative " Go back " \
-            --negative " Check devices " \
-            --prompt.foreground "#5ECCDF" \
-            --selected.foreground "#FFFFFF" \
-            --selected.background "#5ECCDF" \
-            --unselected.foreground "#CCCCCC" \
-            --unselected.background "#2A2A2A" \
-            </dev/tty; then
-            :
-        else
-            manage_binds
-        fi
-    else
-        echo -e "   ${GRAY_BG}${WHITE_FG}Press Enter to return to the menu...${RESET_ALL}"
-        read -r -s </dev/tty || true
-    fi
+    echo -e "  ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
+    printf '\033[?25l' >/dev/tty
+    read -r -s -n1 </dev/tty || true
+    printf '\033[?25h' >/dev/tty
 }
 
 # -------------------------------------------------------------------------
