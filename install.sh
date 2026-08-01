@@ -1059,9 +1059,9 @@ echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf 
 
 (
     while :; do
-        if IFS= read -r -s -n1 -t 0.2 k </dev/tty 2>/dev/null; then
+        if IFS= read -r -s -n1 -t 0.1 k </dev/tty 2>/dev/null; then
             if [ "$k" = $'\e' ]; then
-                if IFS= read -r -s -n1 -t 0.1 extra </dev/tty 2>/dev/null; then
+                if IFS= read -r -s -n1 -t 0.02 extra </dev/tty 2>/dev/null; then
                     if [ "$extra" != "[" ]; then
                         touch /tmp/xbox-steam-calib-esc
                         exit 0
@@ -1088,7 +1088,7 @@ while :; do
         CALIB_ABORTED=1
         break
     fi
-    if IFS= read -r -t 1 line; then
+    if IFS= read -r -t 0.1 line; then
         :
     else
         read_rc=$?
@@ -1150,12 +1150,14 @@ printf '\033[?25h' >/dev/tty
 stty echo </dev/tty 2>/dev/null || true
 set -e
 
+CALIB_ESC_HELD=0
+[ -f /tmp/xbox-steam-calib-esc ] && CALIB_ESC_HELD=1
 kill "$CALIB_ESC_PID" 2>/dev/null || true
 rm -f /tmp/xbox-steam-calib-esc
 [[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
 rm -f "$CALIB_EVTEST"
 
-if [ "$CALIB_ABORTED" -eq 1 ]; then
+if [ "$CALIB_ABORTED" -eq 1 ] || [ "$CALIB_ESC_HELD" -eq 1 ]; then
     echo -ne "\033[1A\033[2K\r"
     echo -e "${YELLOW}Calibration aborted.${CLEAR}"
     echo ""
