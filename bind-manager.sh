@@ -547,7 +547,7 @@ device_menu() {
         done
         echo "" >/dev/tty
         if [ "$busy" -eq 1 ]; then
-            echo -e "  ${K_DIM2}⏳ Toggling bind… input ignored${CLEAR}" >/dev/tty
+            echo -e "  ${K_DIM2}󰔡  Toggling bind…                                                                       ${CLEAR}" >/dev/tty
         else
             echo -e "  ${K_DIM}←↓↑→${CLEAR} ${K_DIM2}navigate${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}enter${CLEAR} ${K_DIM2}submit${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}t${CLEAR} ${K_DIM2}toggle${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}r${CLEAR} ${K_DIM2}rebind${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}d${CLEAR} ${K_DIM2}remove${CLEAR}" >/dev/tty
         fi
