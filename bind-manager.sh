@@ -1200,8 +1200,7 @@ main_menu() {
     local -a items=(
         "  Bind device — Install and calibrate button trigger"
         "  Show bound devices — Manage, toggle or remove binds"
-        "  Uninstall all binds — Remove all binds, keep the program"
-        "󰗽  Uninstall hss — Remove the whole installation"
+        "  Options — Uninstall binds or the whole program"
     )
     local count=${#items[@]} sel=0 key res="" i
 
@@ -1256,6 +1255,66 @@ main_menu() {
     echo "$res"
 }
 
+options_menu() {
+    local -a items=(
+        "  Remove all binds — Remove all binds, keep the program"
+        "󰗽  Uninstall program — Remove the whole installation"
+        "󰌍  Back — Return to the main menu"
+    )
+    local count=${#items[@]} sel=0 key res="" i
+
+    render_options() {
+        printf '\033[H\033[J' >/dev/tty
+        show_banner >/dev/tty
+        echo "" >/dev/tty
+        echo -e "  ${HYPR_DARK_BLUE}OPTIONS${CLEAR}" >/dev/tty
+        echo "" >/dev/tty
+        for i in "${!items[@]}"; do
+            if [ "$i" -eq "$sel" ]; then
+                echo -e "${HYPR_BLUE}${SEL_ARROW}${CLEAR} ${HYPR_BLUE}${items[$i]}${CLEAR}" >/dev/tty
+            else
+                echo -e "  ${items[$i]}" >/dev/tty
+            fi
+        done
+        echo "" >/dev/tty
+        echo -e "  ${K_DIM}←↓↑→${CLEAR} ${K_DIM2}navigate${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}enter${CLEAR} ${K_DIM2}submit${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}esc${CLEAR} ${K_DIM2}back${CLEAR}" >/dev/tty
+        printf '\033[J' >/dev/tty
+    }
+
+    printf '\033[?25l' >/dev/tty
+    render_options
+
+    while IFS= read -r -s -n1 -t 0.001 _ </dev/tty; do :; done 2>/dev/null || true
+
+    while [ -z "$res" ]; do
+        key=$(read_key)
+        case "$key" in
+            UP)
+                [ "$sel" -gt 0 ] && sel=$((sel - 1))
+                ;;
+            DOWN)
+                [ "$sel" -lt $((count - 1)) ] && sel=$((sel + 1))
+                ;;
+            enter)
+                res="${items[$sel]}"
+                ;;
+            ESC|q|Q)
+                res="BACK"
+                ;;
+        esac
+        if [ -z "$res" ]; then
+            render_options
+        else
+            drain_keys
+        fi
+    done
+
+    printf '\033[%dA' "$((count + 2))" >/dev/tty
+    printf '\033[J' >/dev/tty
+    printf '\033[?25h' >/dev/tty
+    echo "$res"
+}
+
 migrate_legacy
 
 # Gate: bind-manager requires install.sh to have run once (systemd unit present).
@@ -1276,12 +1335,16 @@ while true; do
         *"Show bound devices"*)
             manage_binds
             ;;
-        *"Uninstall all binds"*)
-            "$APP_DIR/uninstall.sh" binds
-            ;;
-        *"Uninstall hss"*)
-            "$APP_DIR/uninstall.sh" all
-            exit 0
+        *"Options"*)
+            case "$(options_menu)" in
+                *"Remove all binds"*)
+                    "$APP_DIR/uninstall.sh" binds
+                    ;;
+                *"Uninstall program"*)
+                    "$APP_DIR/uninstall.sh" all
+                    exit 0
+                    ;;
+            esac
             ;;
         "EXIT")
             exit 0

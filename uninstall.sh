@@ -169,11 +169,6 @@ rm -rf "$CONFIG_DIR"
 sudo rm -f /etc/systemd/system/xbox-steam.service 2>/dev/null || true
 sudo rm -f /etc/sudoers.d/xbox-steam-evtest 2>/dev/null || true
 
-# Remove the app directory + launcher shortly after we exit, since we are
-# currently running from inside $APP_DIR (and the manager from the hss link).
-# setsid detaches it so a closing terminal cannot SIGHUP-kill the cleanup.
-( setsid bash -c "sleep 3; rm -rf '$APP_DIR' '$HSS_BIN'" ) & disown || true
-
 if [ "$BIND_COUNT" -eq 0 ]; then
     echo -e "${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"
 elif [ "$BIND_COUNT" -eq 1 ]; then
@@ -184,4 +179,14 @@ fi
 echo -e "${K_DIM}The 'hss' command and app files will be cleaned up automatically.${CLEAR}"
 
 press_enter
+
+# Remove the app directory + launcher synchronously, right before exit.
+# A running bash keeps an open fd to its own script file, so deleting the
+# directory here cannot break the remaining (builtin-only) work before exit.
+# Doing it inline removes the background process entirely — no window where a
+# pending cleanup could delete a freshly re-installed app directory (which
+# previously surfaced as "uninstall.sh: No such file or directory").
+rm -rf "$APP_DIR"
+rm -f "$HSS_BIN"
+
 exit 0

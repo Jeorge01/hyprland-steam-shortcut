@@ -76,12 +76,13 @@ This project works around both limitations by reading raw input events via `evte
 
 ## Interactive Menu
 
-Running `hss` opens an interactive menu with four options:
+Running `hss` opens an interactive menu with three options:
 
 - **Bind device** - Calibrate and install the button trigger
 - **Show bound devices** - Manage, toggle or remove a bind
-- **Uninstall all binds** - Remove every bind, keep the program
-- **Uninstall hss** - Remove the whole installation (binds, service, sudoers, scripts, logs)
+- **Options** - Uninstall binds or the whole program:
+  - **Remove all binds** - Remove every bind, keep the program
+  - **Uninstall program** - Remove the whole installation (binds, service, sudoers, scripts, logs)
 
 Behind the scenes, the installer uses [`evtest`][evtest] to capture raw input events and [`gum`][gum] for the interactive prompts — both are automatically installed if missing.
 

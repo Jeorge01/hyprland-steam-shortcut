@@ -226,6 +226,14 @@ fi
 
 chmod +x "$APP_DIR/bind-manager.sh" "$APP_DIR/uninstall.sh" "$APP_DIR/run_steam.sh"
 
+# Verify the deployed scripts are real scripts (catches failed/404 downloads)
+for f in bind-manager.sh uninstall.sh; do
+    if [ ! -f "$APP_DIR/$f" ] || ! head -c 2 "$APP_DIR/$f" | grep -q '#!'; then
+        echo -e "${RED}❌ $f was not deployed correctly (missing or corrupt) — aborting.${CLEAR}"
+        exit 1
+    fi
+done
+
 # hss launcher symlink
 if [ -e "$HSS_BIN" ] && [ ! -L "$HSS_BIN" ]; then
     rm -f "$HSS_BIN"
