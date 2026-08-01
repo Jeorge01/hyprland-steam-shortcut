@@ -271,7 +271,7 @@ bind_status() {
 
     if systemctl --user is-active --quiet "xbox-steam@$id.service" 2>/dev/null; then
         state_icon="${GREEN}●${CLEAR}"
-        state_word="${GREEN}active  ${CLEAR}"
+        state_word="${GREEN}active${CLEAR}  "
     else
         state_icon="${RED}●${CLEAR}"
         state_word="${RED}inactive${CLEAR}"
@@ -442,6 +442,34 @@ drain_keys() {
     while IFS= read -r -s -n1 -t 0.05 _ </dev/tty 2>/dev/null; do :; done
 }
 
+now_ms() {
+    local now
+    now=$(date +%s%3N 2>/dev/null)
+    if [ -z "$now" ]; then
+        now=$(date +%s 2>/dev/null)
+        [ -n "$now" ] && now=$((now * 1000))
+    fi
+    printf '%s' "${now:-0}"
+}
+
+LAST_TOGGLE_MS=0
+
+# While a toggle is in progress the menu is shown greyed out: everything is
+# dimmed except each bind's status icon + active/inactive word.
+busy_item() {
+    local line="$1"
+    local esc=$'\e'
+    local status rest
+    status="${line%%  *}"
+    rest="${line#*  }"
+    if [ "$rest" = "$line" ]; then
+        printf '%s%s%s%s' "${K_DIM}" "$(printf '%s' "$line" | sed "s/${esc}\\[[0-9;]*m//g")" "${CLEAR}"
+    else
+        rest=$(printf '%s' "$rest" | sed "s/${esc}\\[[0-9;]*m//g")
+        printf '%s  %s%s%s' "$status" "${K_DIM}" "$rest" "${CLEAR}"
+    fi
+}
+
 blue_line() {
     local esc=$'\e'
     if printf '%s' "$1" | grep -q "${esc}\\[1;37m"; then
@@ -454,18 +482,23 @@ blue_line() {
 device_menu() {
     local -a it=("$@")
     local count=${#it[@]}
-    local sel=0 last_sel=-1
-    local key res=""
+    local sel=0 last_sel=-1 last_busy=0
+    local key res="" new_item=""
+    local busy=0 busy_pid=0 busy_out=""
 
     printf '\033[?25l' >/dev/tty
     printf '\033[H\033[J' >/dev/tty
 
     render() {
-        local i first line selected repaint=0
-        if [ "$sel" -ne "$last_sel" ]; then
+        local i first line selected repaint=0 skip_refresh=0
+        if [ "${1:-}" = "now" ]; then
+            skip_refresh=1
             repaint=1
         fi
-        if [ -n "${REFRESH_CB:-}" ]; then
+        if [ "$sel" -ne "$last_sel" ] || [ "$busy" -ne "$last_busy" ]; then
+            repaint=1
+        fi
+        if [ "$skip_refresh" -eq 0 ] && [ -n "${REFRESH_CB:-}" ]; then
             local -a saved
             saved=("${it[@]}")
             "$REFRESH_CB" it
@@ -479,6 +512,7 @@ device_menu() {
             fi
         fi
         last_sel="$sel"
+        last_busy="$busy"
         [ "$repaint" -eq 0 ] && return 0
         printf '\033[H' >/dev/tty
         banner_bound_devices >/dev/tty
@@ -494,27 +528,55 @@ device_menu() {
             first=1
             while IFS= read -r line; do
                 if [ "$first" -eq 1 ]; then
-                    if [ "$selected" -eq 1 ]; then
+                    if [ "$busy" -eq 1 ]; then
+                        echo -e "  $(busy_item "$line")\033[K" >/dev/tty
+                    elif [ "$selected" -eq 1 ]; then
                         echo -e "${HYPR_BLUE}${SEL_ARROW}${CLEAR} $(blue_line "$line")\033[K" >/dev/tty
                     else
                         echo -e "  ${line}\033[K" >/dev/tty
                     fi
                     first=0
                 else
-                    echo -e "  ${line}\033[K" >/dev/tty
+                    if [ "$busy" -eq 1 ]; then
+                        echo -e "  $(busy_item "$line")\033[K" >/dev/tty
+                    else
+                        echo -e "  ${line}\033[K" >/dev/tty
+                    fi
                 fi
             done <<< "${it[$i]}"
         done
         echo "" >/dev/tty
-        echo -e "  ${K_DIM}←↓↑→${CLEAR} ${K_DIM2}navigate${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}enter${CLEAR} ${K_DIM2}submit${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}t${CLEAR} ${K_DIM2}toggle${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}r${CLEAR} ${K_DIM2}rebind${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}d${CLEAR} ${K_DIM2}remove${CLEAR}" >/dev/tty
+        if [ "$busy" -eq 1 ]; then
+            echo -e "  ${K_DIM2}⏳ Toggling bind… input ignored${CLEAR}" >/dev/tty
+        else
+            echo -e "  ${K_DIM}←↓↑→${CLEAR} ${K_DIM2}navigate${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}enter${CLEAR} ${K_DIM2}submit${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}t${CLEAR} ${K_DIM2}toggle${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}r${CLEAR} ${K_DIM2}rebind${CLEAR}${K_DIM3} • ${CLEAR}${K_DIM}d${CLEAR} ${K_DIM2}remove${CLEAR}" >/dev/tty
+        fi
         printf '\033[J' >/dev/tty
     }
 
     render
 
     while IFS= read -r -s -n1 -t 0.001 _ </dev/tty; do :; done 2>/dev/null || true
+    stty -echo </dev/tty 2>/dev/null || true
 
     while [ -z "$res" ]; do
+        if [ "$busy" -eq 1 ]; then
+            if ! kill -0 "$busy_pid" 2>/dev/null; then
+                wait "$busy_pid" 2>/dev/null || true
+                busy=0
+                if [ -z "${REFRESH_CB:-}" ]; then
+                    new_item=$(cat "$busy_out" 2>/dev/null)
+                    if [ -n "$new_item" ]; then
+                        it[$sel]="$new_item"
+                    fi
+                fi
+                rm -f "$busy_out"
+                drain_keys
+                render
+            fi
+            read_key 0.05 >/dev/null
+            continue
+        fi
         key=$(read_key 0.5)
         case "$key" in
             TIMEOUT)
@@ -531,13 +593,20 @@ device_menu() {
             t)
                 if [ "$sel" -lt $((count - 1)) ]; then
                     if [ -n "${TOGGLE_CB:-}" ]; then
-                        local new_item
-                        new_item="$("$TOGGLE_CB" "$sel")"
-                        if [ -n "$new_item" ] && [ -z "${REFRESH_CB:-}" ]; then
-                            it[$sel]="$new_item"
+                        local now
+                        now=$(now_ms)
+                        if [ "$LAST_TOGGLE_MS" -eq 0 ] || [ "$now" -ge $((LAST_TOGGLE_MS + 700)) ]; then
+                            LAST_TOGGLE_MS="$now"
+                            busy=1
+                            render now
+                            busy_out=$(mktemp)
+                            "$TOGGLE_CB" "$sel" >"$busy_out" 2>/dev/null &
+                            busy_pid=$!
+                            drain_keys
+                            continue
+                        else
+                            LAST_TOGGLE_MS="$now"
                         fi
-                        drain_keys
-                        render
                     else
                         res="TOGGLE:$sel"
                     fi
@@ -564,6 +633,7 @@ device_menu() {
         fi
     done
 
+    stty echo </dev/tty 2>/dev/null || true
     printf '\033[?25h' >/dev/tty
     echo "$res"
 }
@@ -1472,6 +1542,7 @@ main_menu() {
     render_main
 
     while IFS= read -r -s -n1 -t 0.001 _ </dev/tty; do :; done 2>/dev/null || true
+    stty -echo </dev/tty 2>/dev/null || true
 
     while [ -z "$res" ]; do
         key=$(read_key)
@@ -1498,6 +1569,7 @@ main_menu() {
 
     printf '\033[%dA' "$((count + 2))" >/dev/tty
     printf '\033[J' >/dev/tty
+    stty echo </dev/tty 2>/dev/null || true
     printf '\033[?25h' >/dev/tty
     echo "$res"
 }
@@ -1530,6 +1602,7 @@ options_menu() {
     render_options
 
     while IFS= read -r -s -n1 -t 0.001 _ </dev/tty; do :; done 2>/dev/null || true
+    stty -echo </dev/tty 2>/dev/null || true
 
     while [ -z "$res" ]; do
         key=$(read_key)
@@ -1556,6 +1629,7 @@ options_menu() {
 
     printf '\033[%dA' "$((count + 2))" >/dev/tty
     printf '\033[J' >/dev/tty
+    stty echo </dev/tty 2>/dev/null || true
     printf '\033[?25h' >/dev/tty
     echo "$res"
 }
