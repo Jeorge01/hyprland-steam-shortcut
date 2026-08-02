@@ -84,7 +84,7 @@ Running `hss` opens an interactive menu with three options:
   - **Remove all binds** - Remove every bind, keep the program
   - **Uninstall program** - Remove the whole installation (binds, service, sudoers, scripts, logs)
 
-Behind the scenes, the installer uses [`evtest`][evtest] to capture raw input events and [`gum`][gum] for the interactive prompts — both are automatically installed if missing.
+Behind the scenes, the installer uses `evtest` to capture raw input events and `gum` for the interactive prompts — both are automatically installed if missing.
 
 <a href="HOW_IT_WORKS.md" target="_blank"><kbd> <br> How it works <br> </kbd></a>
 <a href="https://gitlab.freedesktop.org/libevdev/evtest" target="_blank"><kbd> <br> evtest <br> </kbd></a>
