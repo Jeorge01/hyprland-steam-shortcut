@@ -396,9 +396,15 @@ EOFCFG
 }
 
 toggle_bind() {
-    local id="$1"
+    local id="$1" nf="/tmp/xbox-steam-$id-nodes.txt"
     if systemctl --user is-active --quiet "xbox-steam@$id.service" 2>/dev/null; then
         systemctl --user disable --now "xbox-steam@$id.service" 2>/dev/null || true
+        # evtest runs as root in the user service cgroup, which the user
+        # manager cannot kill — terminate the listeners explicitly too.
+        if [ -f "$nf" ]; then
+            sudo -n /usr/local/sbin/hss-evtest-stop $(cat "$nf") 2>/dev/null || true
+            rm -f "$nf"
+        fi
     else
         systemctl --user enable --now "xbox-steam@$id.service" 2>/dev/null || true
     fi

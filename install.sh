@@ -153,8 +153,8 @@ After=default.target
 [Service]
 Type=simple
 ExecStart=/bin/bash $APP_DIR/run_steam.sh listen %i
-ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-%i-pids.txt"; if [ -f "\$pid_file" ]; then xargs kill < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi'
-KillMode=process
+ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-%i-pids.txt"; nodes_file="/tmp/xbox-steam-%i-nodes.txt"; if [ -f "\$pid_file" ]; then xargs kill < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi; if [ -f "\$nodes_file" ]; then sudo -n /usr/local/sbin/hss-evtest-stop \$(cat "\$nodes_file") 2>/dev/null || true; rm -f "\$nodes_file"; fi'
+KillMode=control-group
 Restart=always
 RestartSec=5
 
@@ -195,9 +195,31 @@ install_service_unit
 
 echo "  Adding sudoers rule for evtest..."
 SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
-echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest" | sudo tee "$SU_FILE" > /dev/null
+{
+    echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest"
+    echo "$(id -un) ALL=(root) NOPASSWD: /usr/local/sbin/hss-evtest-stop"
+} | sudo tee "$SU_FILE" > /dev/null
 sudo chmod 440 "$SU_FILE"
 INSTALLED+=("sudoers rule — passwordless evtest (${HYPR_BLUE}$SU_FILE${CLEAR})")
+
+echo "  Installing evtest cleanup helper..."
+sudo tee /usr/local/sbin/hss-evtest-stop > /dev/null << 'EOF'
+#!/bin/bash
+# hss-evtest-stop — kill evtest listeners attached to the given input event
+# nodes. Runs as root via sudo (NOPASSWD). The bind listener runs evtest as
+# root inside a user systemd service, whose cgroup the user manager cannot
+# kill, so stopping a bind needs this explicit, scoped kill.
+for node in "$@"; do
+    case "$node" in
+        event[0-9]*) ;;
+        *) continue ;;
+    esac
+    pkill -f "evtest /dev/input/$node" 2>/dev/null
+done
+exit 0
+EOF
+sudo chmod 755 /usr/local/sbin/hss-evtest-stop
+INSTALLED+=("evtest cleanup helper — ${HYPR_BLUE}/usr/local/sbin/hss-evtest-stop${CLEAR}")
 
 # -------------------------------------------------------------------------
 # STEP 4: DEPLOY FILES

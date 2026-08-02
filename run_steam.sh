@@ -127,6 +127,21 @@ if [ "$1" == "listen" ]; then
     }
 
     PID_FILE="/tmp/xbox-steam-$DEVICE_ID-pids.txt"
+    NODES_FILE="/tmp/xbox-steam-$DEVICE_ID-nodes.txt"
+
+    # Kills this device's listeners. The evtest subprocesses run as root (sudo),
+    # so the user systemd manager cannot kill them with its cgroup kill — they
+    # must be terminated explicitly via the NOPASSWD helper. Called on device
+    # disconnect, on service stop (EXIT/INT/TERM trap) and from ExecStop.
+    cleanup_listeners() {
+        [ -f "$PID_FILE" ] && xargs kill < "$PID_FILE" 2>/dev/null || true
+        rm -f "$PID_FILE"
+        if [ -f "$NODES_FILE" ]; then
+            sudo -n /usr/local/sbin/hss-evtest-stop $(cat "$NODES_FILE") 2>/dev/null || true
+            rm -f "$NODES_FILE"
+        fi
+    }
+    trap 'cleanup_listeners; exit 0' EXIT INT TERM
 
     echo "Starting listener for $TARGET_DEV_NAME ($DEVICE_ID)..."
 
@@ -153,11 +168,13 @@ if [ "$1" == "listen" ]; then
         fi
 
         echo "" > "$PID_FILE"
+        : > "$NODES_FILE"
         LISTENER_PIDS=""
 
         for NUM in $EVENT_NUMS; do
             if [ -e "/dev/input/$NUM" ]; then
                 echo "Listening on /dev/input/$NUM"
+                echo "$NUM" >> "$NODES_FILE"
                 (
                     sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
                         [ -f /tmp/xbox-steam-calibrating ] && continue
@@ -197,9 +214,7 @@ if [ "$1" == "listen" ]; then
             done
             if [ $STILL_CONNECTED -eq 0 ]; then
                 echo "⚠️ Device disconnected! Cleaning up background processes..."
-                for pid in $LISTENER_PIDS; do
-                    kill $pid 2>/dev/null
-                done
+                cleanup_listeners
                 echo "  Re-scanning hardware..."
                 break
             fi

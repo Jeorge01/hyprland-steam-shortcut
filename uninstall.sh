@@ -97,7 +97,7 @@ count_binds() {
 }
 
 remove_all_binds() {
-    local conf id
+    local conf id nf
     for conf in "$DEVICES_DIR"/*.conf; do
         [ -e "$conf" ] || continue
         id=$(basename "$conf" .conf)
@@ -111,7 +111,16 @@ remove_all_binds() {
         xargs kill < "$pf" 2>/dev/null || true
         rm -f "$pf"
     done
+    # The evtest listeners run as root, so the user systemd manager cannot kill
+    # them via the service cgroup — terminate them explicitly per event node.
+    for nf in /tmp/xbox-steam-*-nodes.txt; do
+        [ -e "$nf" ] || continue
+        sudo -n /usr/local/sbin/hss-evtest-stop $(cat "$nf") 2>/dev/null || true
+        rm -f "$nf"
+    done
     rm -f /tmp/xbox-steam-calibrating
+    rm -f "$DEVICES_DIR"/*.conf
+    rmdir "$DEVICES_DIR" 2>/dev/null || true
 }
 
 clear
@@ -156,6 +165,7 @@ echo -e "${YELLOW}This will remove:${CLEAR}"
 echo -e "  - ${WHITE}${BIND_COUNT}${CLEAR} bound device(s) (xbox-steam@<device>.service)"
 echo -e "  - systemd template unit (xbox-steam@.service)"
 echo -e "  - sudoers rule (/etc/sudoers.d/xbox-steam-evtest)"
+echo -e "  - evtest cleanup helper (/usr/local/sbin/hss-evtest-stop)"
 echo -e "  - run_steam.sh ($APP_DIR/run_steam.sh)"
 echo -e "  - config directory ($CONFIG_DIR)"
 echo -e "  - log file (~/steam_error.log)"
@@ -180,6 +190,7 @@ rm -rf "$CONFIG_DIR"
 
 sudo rm -f /etc/systemd/system/xbox-steam.service 2>/dev/null || true
 sudo rm -f /etc/sudoers.d/xbox-steam-evtest 2>/dev/null || true
+sudo rm -f /usr/local/sbin/hss-evtest-stop 2>/dev/null || true
 
 if [ "$BIND_COUNT" -eq 0 ]; then
     echo -e " ${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"
