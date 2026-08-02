@@ -90,6 +90,99 @@ if ! command -v steam &> /dev/null; then
     exit 1
 fi
 
+# -------------------------------------------------------------------------
+# INSTALL PLAN & CONFIRMATION
+# -------------------------------------------------------------------------
+
+build_plan() {
+    PLAN_PKGS=()
+    PLAN_SYS=()
+    PLAN_SKIP=()
+
+    if ! command -v gum &>/dev/null; then
+        PLAN_PKGS+=("gum — interactive prompt UI")
+    else
+        PLAN_SKIP+=("gum — interactive prompt UI (already installed)")
+    fi
+
+    if command -v evtest &> /dev/null; then
+        PLAN_SKIP+=("evtest — controller input capture (already installed)")
+    else
+        PLAN_PKGS+=("evtest — controller input capture")
+    fi
+
+    if [ -f "/etc/modules-load.d/xpad.conf" ]; then
+        PLAN_SKIP+=("xpad driver — auto-load on boot (already configured)")
+    else
+        PLAN_SYS+=("xpad driver — auto-load on boot")
+    fi
+
+    if [ -f "$HOME/.config/systemd/user/xbox-steam.service" ] || \
+       [ -f /etc/systemd/system/xbox-steam.service ] || \
+       systemctl is-enabled xbox-steam.service &>/dev/null; then
+        PLAN_SYS+=("Remove legacy single-device xbox-steam service")
+    fi
+
+    PLAN_SYS+=("systemd template unit — xbox-steam@.service")
+    PLAN_SYS+=("loginctl linger — run listener without login session")
+    PLAN_SYS+=("sudoers rule — passwordless evtest (/etc/sudoers.d/xbox-steam-evtest)")
+    PLAN_SYS+=("evtest cleanup helper — /usr/local/sbin/hss-evtest-stop")
+    PLAN_SYS+=("Bind Manager — ~/.local/share/hss/bind-manager.sh")
+    PLAN_SYS+=("Uninstaller — ~/.local/share/hss/uninstall.sh")
+    PLAN_SYS+=("Steam launcher — ~/.local/share/hss/run_steam.sh")
+    PLAN_SYS+=("Launcher — ~/.local/bin/hss")
+}
+
+confirm_install() {
+    build_plan
+
+    echo ""
+    echo -e "  ${HYPR_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLEAR}"
+    echo -e "  ${HYPR_BLUE}󰦐  Installation plan${CLEAR}"
+    echo -e "  ${HYPR_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLEAR}"
+
+    if [ ${#PLAN_PKGS[@]} -gt 0 ]; then
+        echo ""
+        echo -e "  ${WHITE}Software packages (via ${PKG_MANAGER}):${CLEAR}"
+        for item in "${PLAN_PKGS[@]}"; do
+            echo -e "  ${GREEN}󰄾${CLEAR} ${item}"
+        done
+    fi
+
+    echo ""
+    echo -e "  ${WHITE}System configuration & files:${CLEAR}"
+    for item in "${PLAN_SYS[@]}"; do
+        echo -e "  ${GREEN}󰄾${CLEAR} ${item}"
+    done
+
+    if [ ${#PLAN_SKIP[@]} -gt 0 ]; then
+        echo ""
+        echo -e "  ${K_DIM}Already installed — will be skipped:${CLEAR}"
+        for item in "${PLAN_SKIP[@]}"; do
+            echo -e "  ${K_DIM}󰄾${CLEAR} ${item}"
+        done
+    fi
+
+    echo ""
+    echo -e "  ${YELLOW}Install the above? [Y/n]${CLEAR}"
+    printf '\033[?25l' >/dev/tty
+    read -r -s -n1 answer </dev/tty || true
+    printf '\033[?25h' >/dev/tty
+    echo ""
+    case "$answer" in
+        ""|y|Y)
+            echo -e "  ${GREEN}Proceeding with installation...${CLEAR}"
+            echo ""
+            ;;
+        *)
+            echo -e "  ${YELLOW}Installation cancelled — nothing was installed.${CLEAR}"
+            exit 0
+            ;;
+    esac
+}
+
+confirm_install
+
 USER_NAME=$(id -un)
 USER_ID=$(id -u)
 
@@ -328,5 +421,5 @@ read -r -s -n1 </dev/tty || true
 printf '\033[?25h' >/dev/tty
 echo ""
 
-echo "Starting Bind Manager..."
+echo "  Starting Bind Manager..."
 exec "$HSS_BIN"
