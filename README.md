@@ -39,7 +39,7 @@ Hyprland's built-in `bind` only supports keyboard keys and mouse buttons while g
 
 # Installation
 
-The one-line installer downloads the Bind Manager, sets up the systemd user service, sudoers rule and driver config, and installs a `hss` command for managing everything later.
+The one-line installer downloads the Bind Manager, sets up the systemd user service, sudoers rule, a root cleanup helper for stopping evtest listeners, and the driver config, and installs a `hss` command for managing everything later.
 
 ### Quick Installation (Recommended)
 Open your terminal and run (works on both Arch Linux and Fedora):
@@ -86,7 +86,7 @@ Running `hss` opens an interactive menu with three options:
 
 Behind the scenes, the installer uses [`evtest`][evtest] to capture raw input events and [`gum`][gum] for the interactive prompts — both are automatically installed if missing.
 
-<a href="MANUAL.md" target="_blank"><kbd> <br> Manual <br> </kbd></a>
+<a href="HOW_IT_WORKS.md" target="_blank"><kbd> <br> How it works <br> </kbd></a>
 <a href="https://gitlab.freedesktop.org/libevdev/evtest" target="_blank"><kbd> <br> evtest <br> </kbd></a>
 <a href="https://github.com/charmbracelet/gum" target="_blank"><kbd> <br> gum <br> </kbd></a>
 
