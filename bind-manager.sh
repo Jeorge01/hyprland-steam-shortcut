@@ -1507,7 +1507,7 @@ EOFC
     if [ -z "${DEVICE_UNIQ:-}" ] && [ -z "${DEVICE_SERIAL:-}" ]; then
         echo -e "   ${YELLOW}⚠  No Uniq/serial detected — identical controllers of this model share this bind.${CLEAR}"
     fi
-    echo "   If it doesn't work, check the log: cat ~/steam_error.log"
+    echo "   If it doesn't work, watch the log live: journalctl --user -t hss-trigger -f"
     echo ""
     echo -e "   ${K_DIM}enter${CLEAR} ${K_DIM2}continue${CLEAR}"
     printf '\033[?25l' >/dev/tty

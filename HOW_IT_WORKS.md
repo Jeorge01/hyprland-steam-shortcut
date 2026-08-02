@@ -69,8 +69,8 @@ One script, two modes:
   the devices automatically.
 - `run_steam.sh trigger` — runs on button press. Copies DISPLAY/Wayland
   environment into the service, focuses the Steam window or current workspace,
-  and opens Big Picture Mode. All logging goes to `~/steam_error.log`
-  (rotated at 512 KB).
+  and opens Big Picture Mode. Trigger output is logged to the systemd journal
+  with the tag `hss-trigger`; follow it live with `journalctl --user -t hss-trigger -f`.
 
 ### `uninstall.sh` — the uninstaller
 
@@ -153,7 +153,7 @@ The fix is to always kill the root listeners *explicitly*:
 - **No button press registered** — another process may hold an exclusive grab
   on the device: `input-remapper` (`sudo systemctl stop input-remapper`),
   `hkdm` (`sudo pacman -R hkdm`), or check `sudo fuser /dev/input/event*`.
-- **Steam does not open** — read `~/steam_error.log` for errors.
+- **Steam does not open** — check `journalctl --user -t hss-trigger -f` for errors.
 - **Controller reconnects but the service does not pick it up** — the listener
   re-scans devices automatically; otherwise `systemctl --user restart
   xbox-steam@<device-id>.service`.

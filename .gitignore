@@ -1,5 +1,4 @@
 *.log
-steam_error.log
 .DS_Store
 CHANGELOG.md
 STATUS.md

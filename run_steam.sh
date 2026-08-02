@@ -227,13 +227,16 @@ fi
 if [ "$1" == "trigger" ]; then
     USER_NAME="${USER_NAME:-$(id -un)}"
     [ -f /tmp/xbox-steam-calibrating ] && exit 0
-    [ -f "$HOME/steam_error.log" ] && [ $(stat -c%s "$HOME/steam_error.log" 2>/dev/null || echo 0) -gt 524288 ] && mv "$HOME/steam_error.log" "$HOME/steam_error.log.old"
 
-    exec >> "$HOME/steam_error.log" 2>&1
-    echo "========================================="
-    echo "=== SCRIPT TRIGGERED BY BUTTON PRESS ==="
-    echo "Timestamp: $(date)"
-    echo "─────────────────────────────────────────"
+    # Route trigger output to the systemd journal instead of a file in $HOME:
+    # the trigger runs as a background child of the listener subshell, whose
+    # stdout is a pipe read-end, so it must be redirected explicitly. Follow
+    # the output with: journalctl --user -t hss-trigger -f
+    if command -v systemd-cat >/dev/null 2>&1; then
+        exec > >(systemd-cat -t hss-trigger) 2>&1
+    else
+        exec > /dev/null 2>&1
+    fi
 
     export WAYLAND_DISPLAY=$(systemctl --user show-environment | grep '^WAYLAND_DISPLAY=' | cut -d= -f2)
     export DISPLAY=$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
@@ -254,13 +257,11 @@ if [ "$1" == "trigger" ]; then
 
     CURRENT_ACTIVE_WS=$(hyprctl monitors | awk '/active workspace:/ {print $3; exit}')
     TARGET_WORKSPACE=${CURRENT_ACTIVE_WS:-"1"}
-    echo "Current active workspace in focus: $TARGET_WORKSPACE"
+    echo "Trigger: opening Steam Big Picture"
 
     PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
 
     if [ -n "$PID_LIST" ]; then
-        echo "Steam is running. Searching for Steam window workspace..."
-
         STEAM_WS=$(hyprctl clients | awk '
             /^Window/ {
                 if (is_steam && ws != "") { last_steam_ws = ws }
@@ -277,26 +278,22 @@ if [ "$1" == "trigger" ]; then
 
         if [ -n "$STEAM_WS" ] && [ "$STEAM_WS" -eq "$STEAM_WS" ] 2>/dev/null; then
             TARGET_WORKSPACE="$STEAM_WS"
-            echo "Found Steam on Workspace: $TARGET_WORKSPACE"
+            echo "Steam running on workspace $TARGET_WORKSPACE"
         else
-            echo "Steam is running but no open window found yet. Staying on current workspace."
+            echo "Steam running but no window yet — staying on workspace $TARGET_WORKSPACE"
         fi
     else
-        echo "Steam is not running. It will be launched on the current workspace ($TARGET_WORKSPACE)."
+        echo "Steam not running — launching on workspace $TARGET_WORKSPACE"
     fi
 
-    echo "Forcing focus to Hyprland Workspace $TARGET_WORKSPACE via modern Lua eval..."
-    hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $TARGET_WORKSPACE }))"
-    hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'class:[Ss]team' }))" 2>/dev/null || true
-    hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" 2>/dev/null || true
+    hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $TARGET_WORKSPACE }))" >/dev/null 2>&1 || true
+    hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'class:[Ss]team' }))" >/dev/null 2>&1 || true
+    hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" >/dev/null 2>&1 || true
 
     if [ -n "$PID_LIST" ]; then
-        echo "Status: Triggering Big Picture..."
         steam steam://open/bigpicture >/dev/null 2>&1 &
     else
-        echo "Status: Launching Big Picture from scratch..."
         systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
     fi
-    echo "=== TRIGGER COMPLETE ==="
-    echo "========================================="
+    echo "Trigger complete"
 fi

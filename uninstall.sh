@@ -168,7 +168,6 @@ echo -e "  - sudoers rule (/etc/sudoers.d/xbox-steam-evtest)"
 echo -e "  - evtest cleanup helper (/usr/local/sbin/hss-evtest-stop)"
 echo -e "  - run_steam.sh ($APP_DIR/run_steam.sh)"
 echo -e "  - config directory ($CONFIG_DIR)"
-echo -e "  - log file (~/steam_error.log)"
 echo -e "  - the Bind Manager itself ($APP_DIR, $HSS_BIN)"
 echo ""
 
