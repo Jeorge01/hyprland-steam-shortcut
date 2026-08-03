@@ -165,6 +165,50 @@ if [ "$1" == "listen" ]; then
             }' /proc/bus/input/devices 2>/dev/null
     }
 
+    # Logs a diagnostic line to the journal under the `hss-trigger` tag so it
+    # shows up in `journalctl --user -t hss-trigger -f`, while still reaching
+    # the service journal via stdout.
+    hss_log() {
+        if command -v systemd-cat >/dev/null 2>&1; then
+            printf '%s\n' "$*" | systemd-cat -t hss-trigger 2>/dev/null || true
+        fi
+        printf '%s\n' "$*"
+    }
+
+    # Returns a formatted suffix naming who holds the given nodes, or empty.
+    # Primary source is the root helper's --holders mode (fuser), which shows
+    # the real grabbing process even when it runs as root. The helper is only
+    # called when it is known to support --holders (an older helper would
+    # misread it as a node and pkill the listener's own evtest). If the helper
+    # is missing or too old, falls back to a clearly-labelled guess from
+    # running grabber processes.
+    grab_holders() {
+        local nodes="$1" out suffix="" guesses=""
+        if [ -f /usr/local/sbin/hss-evtest-stop ] &&
+           grep -q -- '--holders' /usr/local/sbin/hss-evtest-stop 2>/dev/null; then
+            out=$(sudo -n /usr/local/sbin/hss-evtest-stop --holders $nodes 2>&1)
+            if [ -n "$out" ] && ! printf '%s\n' "$out" | grep -qi "command not found\|not authorized\|password is required\|usage"; then
+                suffix=$(printf '%s\n' "$out" | awk '
+                    function prog(p) { sub(/^.*\//, "", p); return p }
+                    $1 ~ /^\/dev\/input\// { pid = $3; cmd = prog($5); check(); next }
+                    $2 ~ /^[0-9]+$/ { pid = $2; cmd = prog($4); check() }
+                    function check() {
+                        if (cmd == "" || cmd == "fuser" || cmd == "evtest" || cmd == "sudo" ||
+                            cmd == "bash" || cmd == "sh" || cmd == "systemd-cat" ||
+                            cmd == "timeout" || cmd == "hss-evtest-stop") next
+                        printf " by: %s(%d)", cmd, pid
+                    }')
+            fi
+        fi
+        if [ -z "$suffix" ]; then
+            for pat in input-remapper steam hkdm keyd; do
+                pgrep -f "$pat" >/dev/null 2>&1 && guesses="$guesses $pat"
+            done
+            [ -n "$guesses" ] && suffix=" (possible grabber:$guesses)"
+        fi
+        printf '%s' "$suffix"
+    }
+
     # Spawns one evtest listener per node in the active set. Detects exclusive
     # grabs (input-remapper, Steam Input, hkdm, ...) on the physical nodes and,
     # when grabbed, listens on the grabber's forwarded virtual clone instead so
@@ -184,12 +228,13 @@ if [ "$1" == "listen" ]; then
 
         FORWARDED_NUMS=$(forwarded_events "$DEVICE_ID" "$TARGET_DEV_NAME")
         if [ -n "$GRABBED_NUMS" ]; then
+            HOLDERS=$(grab_holders "$(echo $GRABBED_NUMS)")
             if [ -n "$FORWARDED_NUMS" ]; then
-                echo "⚠️ Controller grabbed by another process — listening on forwarded virtual device(s):$FORWARDED_NUMS"
+                hss_log "⚠️ Controller grabbed$HOLDERS — listening on forwarded virtual device(s):$FORWARDED_NUMS"
             else
-                echo "⚠️ WARNING: controller grabbed by another process and no forwarded virtual device was found."
-                echo "   No events will reach this listener."
-                echo "   Check who holds the device: fuser -v /dev/input/$(echo $GRABBED_NUMS)"
+                hss_log "⚠️ WARNING: controller grabbed$HOLDERS and no forwarded virtual device was found."
+                hss_log "   No events will reach this listener."
+                hss_log "   Check who holds it: fuser -v /dev/input/$(echo $GRABBED_NUMS)"
             fi
         fi
 
@@ -202,7 +247,7 @@ if [ "$1" == "listen" ]; then
 
         for NUM in $LISTEN_NUMS; do
             if [ -e "/dev/input/$NUM" ]; then
-                echo "Listening on /dev/input/$NUM"
+                hss_log "Listening on /dev/input/$NUM"
                 echo "$NUM" >> "$NODES_FILE"
                 (
                     sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
@@ -273,16 +318,28 @@ if [ "$1" == "listen" ]; then
         while true; do
             sleep 2
             STILL_CONNECTED=1
+            MISSING_NUMS=""
             for NUM in $EVENT_NUMS $FORWARDED_NUMS; do
                 if [ ! -e "/dev/input/$NUM" ]; then
                     STILL_CONNECTED=0
+                    MISSING_NUMS="$NUM"
                     break
                 fi
             done
             if [ $STILL_CONNECTED -eq 0 ]; then
-                echo "⚠️ Device disconnected! Cleaning up background processes..."
+                # A forwarded clone vanishing means a grabber released the
+                # device; a physical node vanishing means the controller was
+                # unplugged. Both re-scan, but the message should say which.
+                case " $FORWARDED_NUMS " in
+                    *" $MISSING_NUMS "*)
+                        hss_log "⚠️ Forwarded virtual device $MISSING_NUMS disappeared — grabber released? Re-evaluating listeners..."
+                        ;;
+                    *)
+                        hss_log "⚠️ Device disconnected! Cleaning up background processes..."
+                        ;;
+                esac
                 cleanup_listeners
-                echo "Re-scanning hardware..."
+                hss_log "Re-scanning hardware..."
                 break
             fi
 
@@ -292,7 +349,7 @@ if [ "$1" == "listen" ]; then
             # that set cheaply tells us when to re-evaluate and swap listeners.
             CURRENT_FORWARDED=$(forwarded_events "$DEVICE_ID" "$TARGET_DEV_NAME")
             if [ "$CURRENT_FORWARDED" != "$FORWARDED_NUMS" ]; then
-                echo "⚠️ Forwarded virtual device set changed — re-evaluating listeners..."
+                hss_log "⚠️ Forwarded virtual device set changed — re-evaluating listeners..."
                 break
             fi
         done

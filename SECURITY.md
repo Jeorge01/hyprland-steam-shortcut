@@ -53,7 +53,7 @@ The following are the highest-value targets and are in scope:
 
 - `install.sh` / `uninstall.sh` (curl|bash installer, sudoers handling)
 - The sudoers rules in `/etc/sudoers.d/xbox-steam-evtest`
-- `/usr/local/sbin/hss-evtest-stop` (root helper, `pkill` usage)
+- `/usr/local/sbin/hss-evtest-stop` (root helper, `pkill` / `--holders` `fuser` usage)
 - `run_steam.sh` (input event handling, systemd service, trigger execution)
 - `bind-manager.sh` (config handling, service management)
 

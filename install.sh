@@ -299,9 +299,21 @@ echo "  Installing evtest cleanup helper..."
 sudo tee /usr/local/sbin/hss-evtest-stop > /dev/null << 'EOF'
 #!/bin/bash
 # hss-evtest-stop — kill evtest listeners attached to the given input event
-# nodes. Runs as root via sudo (NOPASSWD). The bind listener runs evtest as
-# root inside a user systemd service, whose cgroup the user manager cannot
-# kill, so stopping a bind needs this explicit, scoped kill.
+# nodes, or (with --holders) list the processes holding them open. Runs as
+# root via sudo (NOPASSWD). The bind listener runs evtest as root inside a
+# user systemd service, whose cgroup the user manager cannot kill, so stopping
+# a bind needs this explicit, scoped kill.
+if [ "$1" = "--holders" ]; then
+    shift
+    for node in "$@"; do
+        case "$node" in
+            event[0-9]*) ;;
+            *) continue ;;
+        esac
+        fuser -v "/dev/input/$node"
+    done
+    exit 0
+fi
 for node in "$@"; do
     case "$node" in
         event[0-9]*) ;;

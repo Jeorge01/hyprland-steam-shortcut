@@ -71,7 +71,10 @@ One script, two modes:
   while the grabber keeps control. It re-evaluates the grab state while
   running: if a grabber starts or stops, the listener swaps between the
   physical device and the forwarded clone on its own. On disconnect it
-  cleans up and re-scans the devices automatically.
+  cleans up and re-scans the devices automatically. Grab/forward diagnostics
+  (and which app holds the device, via the root helper's `--holders` mode)
+  are logged under the same `hss-trigger` tag as the trigger, so
+  `journalctl --user -t hss-trigger -f` shows the whole lifecycle.
 - `run_steam.sh trigger` — runs on button press. Copies DISPLAY/Wayland
   environment into the service, focuses the Steam window or current workspace,
   and opens Big Picture Mode. Trigger output is logged to the systemd journal
@@ -92,7 +95,7 @@ helper, scripts and logs).
 | `~/.local/bin/hss` | Bind Manager launcher command |
 | `~/.config/systemd/user/xbox-steam@.service` | Systemd template unit (instance = `<device-id>`) |
 | `/etc/sudoers.d/xbox-steam-evtest` | NOPASSWD rules for `evtest` and the helper |
-| `/usr/local/sbin/hss-evtest-stop` | Root helper that kills root `evtest` processes |
+| `/usr/local/sbin/hss-evtest-stop` | Root helper that kills root `evtest` processes; `--holders` lists who holds a node (`fuser`) |
 | `/tmp/xbox-steam-<id>-pids.txt` | Listener subshell PIDs (runtime) |
 | `/tmp/xbox-steam-<id>-nodes.txt` | `eventN` nodes in use (runtime) |
 | `/tmp/xbox-steam-calibrating` | Calibration lockfile (suppresses triggers) |
@@ -138,6 +141,11 @@ This listener handles that situation instead of breaking:
 4. **Warn when it cannot help.** If the device is grabbed but no forwarded clone
    exists, a warning is logged to the journal with hints
    (`fuser -v /dev/input/eventN`, `sudo systemctl stop input-remapper`).
+
+All grab/forward transitions — and the app holding the device, identified via
+the root helper's `--holders` mode (`fuser`) — are logged under the
+`hss-trigger` tag, so `journalctl --user -t hss-trigger -f` shows the whole
+lifecycle alongside trigger events.
 
 **Limitation:** if a grabber *remaps* the very button this listener is bound to,
 that button never reaches the forwarded clone — it is consumed by the grabber.
@@ -192,8 +200,11 @@ The fix is to always kill the root listeners *explicitly*:
   on the device: input-remapper (`sudo systemctl stop input-remapper`), Steam
   Input, `hkdm` (`sudo pacman -R hkdm`), or check `sudo fuser /dev/input/event*`.
   The listener detects grabs automatically and falls back to the grabber's
-  forwarded virtual device, and keeps watching so it swaps back when the grabber
-  stops. If no forwarded clone exists it logs a warning to the journal. Note
+   forwarded virtual device, and keeps watching so it swaps back when the grabber
+   stops. If no forwarded clone exists it logs a warning to the journal. The
+   diagnostics under `journalctl --user -t hss-trigger -f` report when the device
+   is grabbed, which forwarded clone is used instead, and which app holds the
+   device. Note
   that a grabber that *remaps* the bound button (e.g. input-remapper mapping
   `BTN_MODE` to `KEY_F24`) swallows that button, so the forwarded fallback only
   works for buttons the grabber leaves untouched — use different buttons in each
