@@ -65,8 +65,13 @@ One script, two modes:
 
 - `run_steam.sh listen <device-id>` — runs as a systemd service. Reads the
   device's `.conf`, locates the matching `/dev/input/event*` nodes and spawns
-  one `sudo evtest` process per node. On disconnect it cleans up and re-scans
-  the devices automatically.
+  one `sudo evtest` process per node. If a node is exclusively grabbed by
+  another process (input-remapper, Steam Input, hkdm, ...), the listener
+  falls back to the grabber's forwarded virtual clone so the bind still works
+  while the grabber keeps control. It re-evaluates the grab state while
+  running: if a grabber starts or stops, the listener swaps between the
+  physical device and the forwarded clone on its own. On disconnect it
+  cleans up and re-scans the devices automatically.
 - `run_steam.sh trigger` — runs on button press. Copies DISPLAY/Wayland
   environment into the service, focuses the Steam window or current workspace,
   and opens Big Picture Mode. Trigger output is logged to the systemd journal
@@ -105,7 +110,40 @@ normalized to `<vid>-<pid>-<instance>` (e.g. `045e-028e-flydigi-direwolf-4`).
 Steam Input clones (empty `Phys`). That is why the service picks up the
 controller dynamically, even when the `eventN` number changes between reboots.
 
-## 6. Listener lifecycle — and why the helper exists
+## 6. Coexisting with other apps that grab the controller
+
+Input devices are *not* exclusive by default: the kernel broadcasts each event
+to every process that has the device node open. That is why Steam and this
+listener can read the same controller at the same time.
+
+Some apps opt out of that. Tools like input-remapper, Steam Input and hkdm
+issue an exclusive grab (`EVIOCGRAB`) on the device. From then on the kernel
+delivers events **only** to the grabbing process — every other reader
+(including this listener's `evtest`) silently receives nothing. A grab is
+fundamental to those tools: they must swallow the original events so games do
+not see both the original and the remapped ones.
+
+This listener handles that situation instead of breaking:
+
+1. **Detect the grab.** `node_is_grabbed()` probes each physical node with a
+   brief `evtest --grab`; if the grab is denied, another process holds it.
+2. **Fall back to the grabber's clone.** Grabbers that swallow the device still
+   re-emit the events nothing remapped, through a virtual *forwarded* clone
+   (e.g. input-remapper's `input-remapper <name> forwarded`, with
+   `Phys=py-evdev-uinput` and the same VID/PID as the original).
+   `forwarded_events()` finds those nodes and the listener reads them instead.
+3. **Keep watching.** While running, the listener compares the current set of
+   forwarded clones every few seconds. If a grabber starts or stops, it
+   re-evaluates and swaps between the physical device and the clone on its own.
+4. **Warn when it cannot help.** If the device is grabbed but no forwarded clone
+   exists, a warning is logged to the journal with hints
+   (`fuser -v /dev/input/eventN`, `sudo systemctl stop input-remapper`).
+
+**Limitation:** if a grabber *remaps* the very button this listener is bound to,
+that button never reaches the forwarded clone — it is consumed by the grabber.
+Use different buttons in each tool, or disable the grabber for that device.
+
+## 7. Listener lifecycle — and why the helper exists
 
 The listener runs `sudo evtest /dev/input/eventN`, i.e. as **root**, inside a
 *user* systemd service's cgroup. A user systemd cannot kill root processes —
@@ -134,7 +172,7 @@ The fix is to always kill the root listeners *explicitly*:
   helper call, and *Remove all binds* / uninstall kill the root listeners and
   delete the `.conf` files.
 
-## 7. The trigger path (button press → Steam)
+## 8. The trigger path (button press → Steam)
 
 1. `evtest` reports `code <N> value 1`. In combo mode only the trigger button
    fires while the modifier button is held; in single mode a single button
@@ -148,11 +186,18 @@ The fix is to always kill the root listeners *explicitly*:
    then Steam is launched with `steam steam://open/bigpicture` (or
    `systemd-run --user steam -bigpicture` if Steam is not running).
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 - **No button press registered** — another process may hold an exclusive grab
-  on the device: `input-remapper` (`sudo systemctl stop input-remapper`),
-  `hkdm` (`sudo pacman -R hkdm`), or check `sudo fuser /dev/input/event*`.
+  on the device: input-remapper (`sudo systemctl stop input-remapper`), Steam
+  Input, `hkdm` (`sudo pacman -R hkdm`), or check `sudo fuser /dev/input/event*`.
+  The listener detects grabs automatically and falls back to the grabber's
+  forwarded virtual device, and keeps watching so it swaps back when the grabber
+  stops. If no forwarded clone exists it logs a warning to the journal. Note
+  that a grabber that *remaps* the bound button (e.g. input-remapper mapping
+  `BTN_MODE` to `KEY_F24`) swallows that button, so the forwarded fallback only
+  works for buttons the grabber leaves untouched — use different buttons in each
+  tool.
 - **Steam does not open** — check `journalctl --user -t hss-trigger -f` for errors.
 - **Controller reconnects but the service does not pick it up** — the listener
   re-scans devices automatically; otherwise `systemctl --user restart
