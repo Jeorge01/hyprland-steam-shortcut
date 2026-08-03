@@ -126,6 +126,113 @@ if [ "$1" == "listen" ]; then
         printf '%s\n' "$out"
     }
 
+    # Returns 0 (true) when another process holds an exclusive grab (EVIOCGRAB)
+    # on the node — input-remapper, Steam Input, hkdm, etc. A passive evtest
+    # reader receives no events from a grabbed node. Probes with a short
+    # `evtest --grab`: on a grabbed device the grab is denied (evtest prints
+    # "grabbed by another process" and exits non-zero); on a free device the
+    # probe holds the grab only until the timeout releases it.
+    node_is_grabbed() {
+        local node="$1" out rc
+        out=$(timeout 2 sudo evtest --grab "$node" 2>&1)
+        rc=$?
+        echo "$out" | grep -qi "grabbed by another process" && return 0
+        [ "$rc" -eq 2 ] && return 0
+        return 1
+    }
+
+    # Event nodes of virtual clones of the device: same VID/PID, non-empty Phys,
+    # living under /sys/devices/virtual/input/. A grabber such as input-remapper
+    # creates one per grabbed controller (e.g. "input-remapper <name> forwarded",
+    # Phys=py-evdev-uinput) so other processes can keep reading input while the
+    # physical node is exclusively grabbed. Steam Input clones (empty Phys) are
+    # excluded, matching device_events().
+    forwarded_events() {
+        local id="$1" name="${2:-}" vid="" pid="" rest=""
+        if [[ "$id" =~ ^[0-9a-fA-F]{4}-[0-9a-fA-F]{4}(-[a-z0-9]+)*$ ]]; then
+            vid=$(echo "${id%%-*}" | tr '[:upper:]' '[:lower:]')
+            rest="${id#*-}"
+            pid=$(echo "${rest%%-*}" | tr '[:upper:]' '[:lower:]')
+        fi
+        awk -v RS='' -v vid="$vid" -v pid="$pid" -v name="$name" '
+            function physval(    s, p) {
+                p = index($0, "P: Phys="); if (!p) return ""
+                s = substr($0, p + 8); sub(/\n.*/, "", s); return s
+            }
+            index($0, "Sysfs=/devices/virtual/input/") && physval() != "" &&
+            (vid != "" ? index($0, "Vendor=" vid " ") && index($0, "Product=" pid " ") : index($0, name)) {
+                for (i = 1; i <= NF; i++) if ($i ~ /^(Handlers=)?event[0-9]+$/) { sub(/^Handlers=/, "", $i); print $i }
+            }' /proc/bus/input/devices 2>/dev/null
+    }
+
+    # Spawns one evtest listener per node in the active set. Detects exclusive
+    # grabs (input-remapper, Steam Input, hkdm, ...) on the physical nodes and,
+    # when grabbed, listens on the grabber's forwarded virtual clone instead so
+    # the bind keeps working while the grabber holds the device. Kills any
+    # previous listeners first, so it can be called again to swap between the
+    # physical device and the forwarded clone when the grab state changes.
+    spawn_listeners() {
+        FREE_NUMS=""
+        GRABBED_NUMS=""
+        for NUM in $EVENT_NUMS; do
+            if [ -e "/dev/input/$NUM" ] && node_is_grabbed "/dev/input/$NUM"; then
+                GRABBED_NUMS="$GRABBED_NUMS $NUM"
+            else
+                FREE_NUMS="$FREE_NUMS $NUM"
+            fi
+        done
+
+        FORWARDED_NUMS=$(forwarded_events "$DEVICE_ID" "$TARGET_DEV_NAME")
+        if [ -n "$GRABBED_NUMS" ]; then
+            if [ -n "$FORWARDED_NUMS" ]; then
+                echo "⚠️ Controller grabbed by another process — listening on forwarded virtual device(s):$FORWARDED_NUMS"
+            else
+                echo "⚠️ WARNING: controller grabbed by another process and no forwarded virtual device was found."
+                echo "   No events will reach this listener."
+                echo "   Check who holds the device: fuser -v /dev/input/$(echo $GRABBED_NUMS)"
+            fi
+        fi
+
+        LISTEN_NUMS="$FREE_NUMS $FORWARDED_NUMS"
+
+        cleanup_listeners
+        echo "" > "$PID_FILE"
+        : > "$NODES_FILE"
+        LISTENER_PIDS=""
+
+        for NUM in $LISTEN_NUMS; do
+            if [ -e "/dev/input/$NUM" ]; then
+                echo "Listening on /dev/input/$NUM"
+                echo "$NUM" >> "$NODES_FILE"
+                (
+                    sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
+                        [ -f /tmp/xbox-steam-calibrating ] && continue
+                        if [ "$BIND_MODE" = "combo" ]; then
+                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
+                                MODIFIER_HELD=1
+                            fi
+                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 0"; then
+                                MODIFIER_HELD=0
+                            fi
+                            if echo "$line" | grep -q "code $TRIGGER_BTN_CODE.*value 1"; then
+                                if [ "${MODIFIER_HELD:-0}" -eq 1 ]; then
+                                    MODIFIER_HELD=0
+                                    /bin/bash "$SCRIPT_PATH" trigger &
+                                fi
+                            fi
+                        else
+                            if echo "$line" | grep -q "code $TARGET_BTN_CODE.*value 1"; then
+                                /bin/bash "$SCRIPT_PATH" trigger &
+                            fi
+                        fi
+                    done
+                ) &
+                LISTENER_PIDS="$LISTENER_PIDS $!"
+            fi
+        done
+        echo "$LISTENER_PIDS" > "$PID_FILE"
+    }
+
     PID_FILE="/tmp/xbox-steam-$DEVICE_ID-pids.txt"
     NODES_FILE="/tmp/xbox-steam-$DEVICE_ID-nodes.txt"
 
@@ -161,52 +268,12 @@ if [ "$1" == "listen" ]; then
         done
 
         echo "Your calibrated device is ready! Initializing listener..."
-
-        if systemctl is-active --quiet input-remapper 2>/dev/null; then
-            echo "⚠️ WARNING: input-remapper is running and may block button detection"
-            echo "   Run: sudo systemctl stop input-remapper"
-        fi
-
-        echo "" > "$PID_FILE"
-        : > "$NODES_FILE"
-        LISTENER_PIDS=""
-
-        for NUM in $EVENT_NUMS; do
-            if [ -e "/dev/input/$NUM" ]; then
-                echo "Listening on /dev/input/$NUM"
-                echo "$NUM" >> "$NODES_FILE"
-                (
-                    sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
-                        [ -f /tmp/xbox-steam-calibrating ] && continue
-                        if [ "$BIND_MODE" = "combo" ]; then
-                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
-                                MODIFIER_HELD=1
-                            fi
-                            if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 0"; then
-                                MODIFIER_HELD=0
-                            fi
-                            if echo "$line" | grep -q "code $TRIGGER_BTN_CODE.*value 1"; then
-                                if [ "${MODIFIER_HELD:-0}" -eq 1 ]; then
-                                    MODIFIER_HELD=0
-                                    /bin/bash "$SCRIPT_PATH" trigger &
-                                fi
-                            fi
-                        else
-                            if echo "$line" | grep -q "code $TARGET_BTN_CODE.*value 1"; then
-                                /bin/bash "$SCRIPT_PATH" trigger &
-                            fi
-                        fi
-                    done
-                ) &
-                LISTENER_PIDS="$LISTENER_PIDS $!"
-            fi
-        done
-        echo "$LISTENER_PIDS" > "$PID_FILE"
+        spawn_listeners
 
         while true; do
             sleep 2
             STILL_CONNECTED=1
-            for NUM in $EVENT_NUMS; do
+            for NUM in $EVENT_NUMS $FORWARDED_NUMS; do
                 if [ ! -e "/dev/input/$NUM" ]; then
                     STILL_CONNECTED=0
                     break
@@ -215,7 +282,17 @@ if [ "$1" == "listen" ]; then
             if [ $STILL_CONNECTED -eq 0 ]; then
                 echo "⚠️ Device disconnected! Cleaning up background processes..."
                 cleanup_listeners
-                echo "  Re-scanning hardware..."
+                echo "Re-scanning hardware..."
+                break
+            fi
+
+            # Grab state may have changed while running (a grabber such as
+            # input-remapper or Steam Input started or stopped). Forwarded
+            # virtual clones appear and disappear with the grab, so comparing
+            # that set cheaply tells us when to re-evaluate and swap listeners.
+            CURRENT_FORWARDED=$(forwarded_events "$DEVICE_ID" "$TARGET_DEV_NAME")
+            if [ "$CURRENT_FORWARDED" != "$FORWARDED_NUMS" ]; then
+                echo "⚠️ Forwarded virtual device set changed — re-evaluating listeners..."
                 break
             fi
         done
