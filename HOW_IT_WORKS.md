@@ -188,9 +188,21 @@ The fix is to always kill the root listeners *explicitly*:
 2. `run_steam.sh trigger` starts and reads `WAYLAND_DISPLAY`/`DISPLAY` from the
    service environment (with a fallback to the compositor process's
    `/proc/<pid>/environ`).
-3. The script finds the Steam window's workspace via `hyprctl clients`, or uses
-   the current workspace if Steam is not running yet.
-4. `hyprctl eval` moves focus via `hl.dsp.focus` / `cursor.move_to_corner`,
+3. **A running game wins over Steam Big Picture.** The trigger detects a game
+   primarily by the `SteamAppId` environment variable that Steam sets on every
+   process of a game session (native, Proton and Gamescope alike) — it scans
+   `/proc/*/environ` for `SteamAppId=` and matches those PIDs against each
+   window's `pid`. Class names are deliberately *not* relied on: games pick
+   their own class (`gamescope`, `winehq`, the game's own name, …), so the
+   `steam_app_*` / `gamescope`-not-a-Steam-shell heuristics only remain as a
+   fallback for games launched outside Steam (which have no `SteamAppId`).
+   If a game is found, the trigger focuses its window (workspace + window +
+   cursor) and stops — Steam's own guide-button overlay keeps working on top
+   of the game, so the bind never yanks focus away from it.
+4. Otherwise the script finds the Steam window's workspace via
+   `hyprctl clients`, or uses the current workspace if Steam is not running
+   yet.
+5. `hyprctl eval` moves focus via `hl.dsp.focus` / `cursor.move_to_corner`,
    then Steam is launched with `steam steam://open/bigpicture` (or
    `systemd-run --user steam -bigpicture` if Steam is not running).
 

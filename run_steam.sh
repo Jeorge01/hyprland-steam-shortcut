@@ -391,6 +391,54 @@ if [ "$1" == "trigger" ]; then
 
     CURRENT_ACTIVE_WS=$(hyprctl monitors | awk '/active workspace:/ {print $3; exit}')
     TARGET_WORKSPACE=${CURRENT_ACTIVE_WS:-"1"}
+
+    # A running game takes precedence over Steam Big Picture: focus the game
+    # instead of Steam, so the bind never yanks focus away from it. A game is
+    # detected primarily by the `SteamAppId` env var Steam sets on every
+    # process of a game session (native, Proton and Gamescope alike), mapped
+    # to a window via its PID. Class names alone are unreliable: games choose
+    # their own (e.g. `gamescope`, `winehq`, or the game's own name), so the
+    # class heuristics below are only a fallback for games launched outside
+    # Steam (no SteamAppId). Steam's own guide-button overlay still works on
+    # top of the game; the game itself decides where its input goes.
+    STEAM_PIDS=$(grep -azl '^SteamAppId=' /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3 | tr '\n' ' ')
+
+    GAME=$(hyprctl clients | awk -v active_ws="$CURRENT_ACTIVE_WS" -v steam_pids="$STEAM_PIDS" '
+        BEGIN { done=0; best=""; best_ws=""; best_addr=""; best_fh=9999 }
+        function is_steam_pid(p) { return (" " steam_pids " ") ~ (" " p " ") }
+        function is_game() {
+            if (is_steam_pid(pid)) return 1
+            if (cls ~ /^steam_app_/) return 1
+            if (cls == "gamescope" && title !~ /^Steam (Big Picture Mode|Deck UI|Desktop UI|Beta)/) return 1
+            return 0
+        }
+        function flush() {
+            if (done) return
+            if (is_game() && ws != "" && addr != "") {
+                if (ws == active_ws) { print cls, ws, addr, title; done=1; return }
+                if (fh < best_fh) { best=cls; best_ws=ws; best_addr=addr; best_fh=fh; best_title=title }
+            }
+            ws=""; cls=""; addr=""; fh=9999; title=""
+        }
+        /^Window/ { flush(); addr=$2 }
+        /^[[:space:]]*workspace:/ { ws=$2 }
+        /^[[:space:]]*class:/ { cls=$2 }
+        /^[[:space:]]*pid:/ { pid=$2 }
+        /^[[:space:]]*focusHistoryID:/ { fh=$2 }
+        /^[[:space:]]*title:/ { sub(/^[[:space:]]*title: /, ""); title=$0 }
+        END { flush(); if (!done && best != "") print best, best_ws, best_addr, best_title }
+    ')
+
+    if [ -n "$GAME" ]; then
+        read -r GAME_CLASS GAME_WS GAME_ADDR GAME_TITLE <<< "$GAME"
+        echo "Game running — focusing $GAME_TITLE on workspace $GAME_WS"
+        hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $GAME_WS }))" >/dev/null 2>&1 || true
+        hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'address:$GAME_ADDR' }))" >/dev/null 2>&1 || true
+        hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'address:$GAME_ADDR' }))" >/dev/null 2>&1 || true
+        echo "Trigger complete"
+        exit 0
+    fi
+
     echo "Trigger: opening Steam Big Picture"
 
     PID_LIST=$(pgrep -u "$USER_NAME" -x "steam")
