@@ -125,6 +125,10 @@ build_plan() {
         PLAN_SYS+=("Remove legacy single-device xbox-steam service")
     fi
 
+    if pgrep -x steam >/dev/null 2>&1; then
+        PLAN_SYS+=("Close Steam before applying config (Steam is currently running)")
+    fi
+
     PLAN_SYS+=("systemd template unit — hss-steam-trigger@.service")
     PLAN_SYS+=("loginctl linger — run listener without login session")
     PLAN_SYS+=("sudoers rule — passwordless evtest (/etc/sudoers.d/hss-evtest)")
@@ -185,7 +189,46 @@ confirm_install() {
     esac
 }
 
+# Asks the user for permission to close Steam if it is running. hss patches
+# Steam's config.vdf / localconfig.vdf, which Steam rewrites from memory on
+# exit — so the config can only be applied safely while Steam is down. If the
+# user declines, the installation is aborted.
+ensure_steam_closed() {
+    if ! pgrep -x steam >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo ""
+    echo -e "  ${YELLOW}Steam is running. hss needs it closed so Steam does not overwrite the config files from memory on exit.${CLEAR}"
+    echo -e "  ${YELLOW}Close Steam now? [Y/n]${CLEAR}"
+    printf '\033[?25l' >/dev/tty
+    read -r -s -n1 answer </dev/tty || true
+    printf '\033[?25h' >/dev/tty
+    echo ""
+    case "$answer" in
+        ""|y|Y)
+            echo -e "  ${GREEN}Closing Steam...${CLEAR}"
+            steam -shutdown >/dev/null 2>&1 || true
+            for _ in $(seq 1 30); do
+                pgrep -x steam >/dev/null 2>&1 || break
+                sleep 1
+            done
+            if pgrep -x steam >/dev/null 2>&1; then
+                echo -e "  ${RED}Steam did not exit within 30s — aborting installation.${CLEAR}"
+                exit 1
+            fi
+            echo -e "  ${GREEN}Steam closed.${CLEAR}"
+            ;;
+        *)
+            echo -e "  ${YELLOW}Installation aborted — Steam must be closed to install hss.${CLEAR}"
+            exit 1
+            ;;
+    esac
+}
+
 confirm_install
+
+ensure_steam_closed
 
 USER_NAME=$(id -un)
 USER_ID=$(id -u)

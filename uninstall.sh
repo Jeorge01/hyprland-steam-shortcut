@@ -177,6 +177,16 @@ if ! confirm "Uninstall hss?"; then
     exit 1
 fi
 
+if pgrep -x steam >/dev/null 2>&1; then
+    echo -e " ${YELLOW}Steam is running — its config files (config.vdf / localconfig.vdf) are restored from backup while Steam is closed.${CLEAR}"
+    if confirm "Close Steam now?"; then
+        echo -e " ${YELLOW}Closing Steam...${CLEAR}"
+    else
+        echo -e "${YELLOW}Uninstall aborted — Steam must be closed to restore the config.${CLEAR}"
+        exit 1
+    fi
+fi
+
 echo -e " ${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
 
 # Restore Steam's controller configuration (guide button, Xbox Configuration
@@ -184,7 +194,12 @@ echo -e " ${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
 # --force closes Steam if it is running. Never abort the uninstall over this.
 if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
     echo -e " ${YELLOW}Reverting Steam controller patches...${CLEAR}"
-    if ! "$APP_DIR/steam-guide-btn-fix.sh" revert --force; then
+    # Align steam-guide-btn-fix.sh's own output (no leading space) with this
+    # script's single-space message style by prefixing every line.
+    revert_out=$("$APP_DIR/steam-guide-btn-fix.sh" revert --force 2>&1)
+    revert_rc=$?
+    printf '%s\n' "$revert_out" | sed 's/^/ /'
+    if [ "$revert_rc" -ne 0 ]; then
         echo -e " ${YELLOW}Steam patch revert failed — continuing uninstall anyway.${CLEAR}"
     fi
 fi
