@@ -251,6 +251,7 @@ if [ "$1" == "listen" ]; then
                 hss_log "Listening on /dev/input/$NUM"
                 echo "$NUM" >> "$NODES_FILE"
                 (
+                    LAST_TRIGGER_AT=0
                     sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
                         [ -f /tmp/xbox-steam-calibrating ] && continue
                         if [ "$BIND_MODE" = "combo" ]; then
@@ -268,7 +269,16 @@ if [ "$1" == "listen" ]; then
                             fi
                         else
                             if echo "$line" | grep -q "code $TARGET_BTN_CODE.*value 1"; then
-                                /bin/bash "$SCRIPT_PATH" trigger &
+                                # Coalesce rapid presses into one toggle. Steam's
+                                # Big Picture menu animation (~200ms) swallows
+                                # back-to-back Ctrl+1 injections, so spamming the
+                                # guide button leaves the menu stuck open. Only the
+                                # first press in a TRIGGER_COALESCE_MS window toggles.
+                                NOW=$(date +%s%N)
+                                if [ $(( NOW - LAST_TRIGGER_AT )) -ge $(( ${TRIGGER_COALESCE_MS:-300} * 1000000 )) ]; then
+                                    LAST_TRIGGER_AT=$NOW
+                                    /bin/bash "$SCRIPT_PATH" trigger &
+                                fi
                             fi
                         fi
                     done
