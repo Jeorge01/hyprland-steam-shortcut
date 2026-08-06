@@ -101,24 +101,24 @@ remove_all_binds() {
     for conf in "$DEVICES_DIR"/*.conf; do
         [ -e "$conf" ] || continue
         id=$(basename "$conf" .conf)
-        systemctl --user disable --now "xbox-steam@$id.service" 2>/dev/null || true
+        systemctl --user disable --now "hss-steam-trigger@$id.service" 2>/dev/null || true
     done
-    systemctl --user stop 'xbox-steam@*.service' 2>/dev/null || true
-    systemctl --user disable --now 'xbox-steam@*.service' 2>/dev/null || true
+    systemctl --user stop 'hss-steam-trigger@*.service' 2>/dev/null || true
+    systemctl --user disable --now 'hss-steam-trigger@*.service' 2>/dev/null || true
 
-    for pf in /tmp/xbox-steam-pids.txt /tmp/xbox-steam-*-pids.txt; do
+    for pf in /tmp/hss-steam-trigger-pids.txt /tmp/hss-steam-trigger-*-pids.txt; do
         [ -e "$pf" ] || continue
         xargs kill < "$pf" 2>/dev/null || true
         rm -f "$pf"
     done
     # The evtest listeners run as root, so the user systemd manager cannot kill
     # them via the service cgroup — terminate them explicitly per event node.
-    for nf in /tmp/xbox-steam-*-nodes.txt; do
+    for nf in /tmp/hss-steam-trigger-*-nodes.txt; do
         [ -e "$nf" ] || continue
         sudo -n /usr/local/sbin/hss-evtest-stop $(cat "$nf") 2>/dev/null || true
         rm -f "$nf"
     done
-    rm -f /tmp/xbox-steam-calibrating
+    rm -f /tmp/hss-steam-trigger-calibrating /tmp/xbox-steam-calibrating
     rm -f "$DEVICES_DIR"/*.conf
     rmdir "$DEVICES_DIR" 2>/dev/null || true
 }
@@ -162,11 +162,11 @@ fi
 count_binds
 
 echo -e "${YELLOW}This will remove:${CLEAR}"
-echo -e "  - ${WHITE}${BIND_COUNT}${CLEAR} bound device(s) (xbox-steam@<device>.service)"
-echo -e "  - systemd template unit (xbox-steam@.service)"
-echo -e "  - sudoers rule (/etc/sudoers.d/xbox-steam-evtest)"
+echo -e "  - ${WHITE}${BIND_COUNT}${CLEAR} bound device(s) (hss-steam-trigger@<device>.service)"
+echo -e "  - systemd template unit (hss-steam-trigger@.service)"
+echo -e "  - sudoers rule (/etc/sudoers.d/hss-evtest)"
 echo -e "  - evtest cleanup helper (/usr/local/sbin/hss-evtest-stop)"
-echo -e "  - run_steam.sh ($APP_DIR/run_steam.sh)"
+echo -e "  - steam-trigger.sh ($APP_DIR/steam-trigger.sh)"
 echo -e "  - config directory ($CONFIG_DIR)"
 echo -e "  - Steam guide-button patches (restored to normal from backup)"
 echo -e "  - the Bind Manager itself ($APP_DIR, $HSS_BIN)"
@@ -191,6 +191,7 @@ fi
 
 remove_all_binds
 
+rm -f "$HOME/.config/systemd/user/hss-steam-trigger@.service"
 rm -f "$HOME/.config/systemd/user/xbox-steam@.service"
 rm -f "$HOME/.config/systemd/user/xbox-steam.service"
 systemctl --user daemon-reload 2>/dev/null || true
@@ -199,6 +200,7 @@ rm -f "$HOME/steam_error.log"
 rm -rf "$CONFIG_DIR"
 
 sudo rm -f /etc/systemd/system/xbox-steam.service 2>/dev/null || true
+sudo rm -f /etc/sudoers.d/hss-evtest 2>/dev/null || true
 sudo rm -f /etc/sudoers.d/xbox-steam-evtest 2>/dev/null || true
 sudo rm -f /usr/local/sbin/hss-evtest-stop 2>/dev/null || true
 

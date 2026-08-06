@@ -25,13 +25,13 @@ a background systemd user service.
  hss (bind-manager.sh)
    │  calibration → bind saved as <device-id>.conf
    ▼
- xbox-steam@<device-id>.service   (systemd user template unit)
-   │  exec run_steam.sh listen <device-id>
-   ▼
- run_steam.sh listen
-   │  spawns  sudo evtest /dev/input/eventN  (root)
-   ▼
- button press → run_steam.sh trigger
+  hss-steam-trigger@<device-id>.service   (systemd user template unit)
+    │  exec steam-trigger.sh listen <device-id>
+    ▼
+  steam-trigger.sh listen
+    │  spawns  sudo evtest /dev/input/eventN  (root)
+    ▼
+  button press → steam-trigger.sh trigger
    │  finds the Steam window / current workspace
    ▼
  Steam Big Picture Mode
@@ -55,15 +55,15 @@ An interactive menu with three options:
 - **Bind device** — calibrates and installs the button trigger (single or
   combo mode).
 - **Show bound devices** — shows, toggles or removes binds. Toggling
-  starts/stops the matching `xbox-steam@<id>.service`.
+  starts/stops the matching `hss-steam-trigger@<id>.service`.
 - **Options** — *Remove all binds* (deletes every `.conf` file, keeps the
   program) or *Uninstall program* (removes everything).
 
-### `run_steam.sh` — listener + trigger
+### `steam-trigger.sh` — listener + trigger
 
 One script, two modes:
 
-- `run_steam.sh listen <device-id>` — runs as a systemd service. Reads the
+- `steam-trigger.sh listen <device-id>` — runs as a systemd service. Reads the
   device's `.conf`, locates the matching `/dev/input/event*` nodes and spawns
   one `sudo evtest` process per node. If a node is exclusively grabbed by
   another process (input-remapper, Steam Input, hkdm, ...), the listener
@@ -75,7 +75,7 @@ One script, two modes:
   (and which app holds the device, via the root helper's `--holders` mode)
   are logged under the same `hss-trigger` tag as the trigger, so
   `journalctl --user -t hss-trigger -f` shows the whole lifecycle.
-- `run_steam.sh trigger` — runs on button press. Copies DISPLAY/Wayland
+- `steam-trigger.sh trigger` — runs on button press. Copies DISPLAY/Wayland
   environment into the service (including `HYPRLAND_INSTANCE_SIGNATURE`, which
   the systemd service lacks — without it `hyprctl` fails and the focus/workspace
   detection silently no-ops), focuses the Steam window or current workspace,
@@ -93,7 +93,7 @@ One script, two modes:
   is back to normal — uninstall.sh runs it before removing the app. `toggle`
   injects Ctrl+1 (the STEAM
   button) into the focused window via uinput to open/close the Big Picture menu.
-  `run_steam.sh` runs `setup --global-off` before each fresh launch (the safety
+  `steam-trigger.sh` runs `setup --global-off` before each fresh launch (the safety
   net that re-applies the fix after Steam resets a controller) and `toggle` on
   button press when Steam is already running.
 
@@ -112,14 +112,14 @@ too, not just the hss side.
 |---|---|
 | `~/.config/steam-shortcut/config` | Global config: `USER_NAME`, `USER_ID` |
 | `~/.config/steam-shortcut/devices/<device-id>.conf` | Per-device bind: `TARGET_DEV_NAME`, `DEVICE_UNIQ`, `DEVICE_SERIAL`, `BIND_MODE`, button codes, `GUIDE_BTN_FIX` (`1` = guide button was unbound from Steam for this device when the bind was saved) |
-| `~/.local/share/hss/` | Deployed scripts (`bind-manager.sh`, `run_steam.sh`, `steam-guide-btn-fix.sh`, `uinputctl.c`, `uninstall.sh`) |
+| `~/.local/share/hss/` | Deployed scripts (`bind-manager.sh`, `steam-trigger.sh`, `steam-guide-btn-fix.sh`, `uinputctl.c`, `uninstall.sh`) |
 | `~/.local/bin/hss` | Bind Manager launcher command |
-| `~/.config/systemd/user/xbox-steam@.service` | Systemd template unit (instance = `<device-id>`) |
-| `/etc/sudoers.d/xbox-steam-evtest` | NOPASSWD rules for `evtest` and the helper |
+| `~/.config/systemd/user/hss-steam-trigger@.service` | Systemd template unit (instance = `<device-id>`) |
+| `/etc/sudoers.d/hss-evtest` | NOPASSWD rules for `evtest` and the helper |
 | `/usr/local/sbin/hss-evtest-stop` | Root helper that kills root `evtest` processes; `--holders` lists who holds a node (`fuser`) |
-| `/tmp/xbox-steam-<id>-pids.txt` | Listener subshell PIDs (runtime) |
-| `/tmp/xbox-steam-<id>-nodes.txt` | `eventN` nodes in use (runtime) |
-| `/tmp/xbox-steam-calibrating` | Calibration lockfile (suppresses triggers) |
+| `/tmp/hss-steam-trigger-<id>-pids.txt` | Listener subshell PIDs (runtime) |
+| `/tmp/hss-steam-trigger-<id>-nodes.txt` | `eventN` nodes in use (runtime) |
+| `/tmp/hss-steam-trigger-calibrating` | Calibration lockfile (suppresses triggers) |
 
 ## 5. Device identification
 
@@ -129,7 +129,7 @@ per-instance suffix from the device: the `U: Uniq=` value in
 `/proc/bus/input/devices` or the USB serial number (`DEVICE_SERIAL`),
 normalized to `<vid>-<pid>-<instance>` (e.g. `045e-028e-flydigi-direwolf-4`).
 
-`device_events()` in `run_steam.sh` matches `Vendor`/`Product` against
+`device_events()` in `steam-trigger.sh` matches `Vendor`/`Product` against
 `/proc/bus/input/devices`, filters by Uniq/serial or device name, and excludes
 Steam Input clones (empty `Phys`). That is why the service picks up the
 controller dynamically, even when the `eventN` number changes between reboots.
@@ -188,7 +188,7 @@ symptoms:
 
 The fix is to always kill the root listeners *explicitly*:
 
-- `run_steam.sh` writes its `eventN` nodes to `nodes.txt` next to `pids.txt`.
+- `steam-trigger.sh` writes its `eventN` nodes to `nodes.txt` next to `pids.txt`.
 - `cleanup_listeners()` kills the listener subshells via `pids.txt` and then
   calls `sudo -n /usr/local/sbin/hss-evtest-stop $(cat nodes.txt)`, which
   `pkill`s `evtest /dev/input/<node>` as root.
@@ -206,7 +206,7 @@ The fix is to always kill the root listeners *explicitly*:
 1. `evtest` reports `code <N> value 1`. In combo mode only the trigger button
    fires while the modifier button is held; in single mode a single button
    suffices.
-2. `run_steam.sh trigger` starts and reads `WAYLAND_DISPLAY`/`DISPLAY` from the
+2. `steam-trigger.sh trigger` starts and reads `WAYLAND_DISPLAY`/`DISPLAY` from the
    service environment (with a fallback to the compositor process's
    `/proc/<pid>/environ`).
 3. **A running game wins over Steam Big Picture.** The trigger detects a game
@@ -279,9 +279,9 @@ The fix is to always kill the root listeners *explicitly*:
    (Proton#9780).
 - **Controller reconnects but the service does not pick it up** — the listener
   re-scans devices automatically; otherwise `systemctl --user restart
-  xbox-steam@<device-id>.service`.
+  hss-steam-trigger@<device-id>.service`.
 - **A bind does not toggle off** — verify that
   `/usr/local/sbin/hss-evtest-stop` exists and the sudoers rule is in place
-  (`sudo -l`), and that `~/.config/systemd/user/xbox-steam@.service` contains
+  (`sudo -l`), and that `~/.config/systemd/user/hss-steam-trigger@.service` contains
   the new `ExecStop`: run `systemctl --user daemon-reload` after the unit is
   updated.

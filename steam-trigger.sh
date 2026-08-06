@@ -11,7 +11,7 @@ fi
 if [ "$1" == "listen" ]; then
     DEVICE_ID="${2:-}"
     if [ -z "$DEVICE_ID" ]; then
-        echo "Error: missing device id. Usage: run_steam.sh listen <device-id>" >&2
+        echo "Error: missing device id. Usage: steam-trigger.sh listen <device-id>" >&2
         exit 1
     fi
 
@@ -253,7 +253,7 @@ if [ "$1" == "listen" ]; then
                 (
                     LAST_TRIGGER_AT=0
                     sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
-                        [ -f /tmp/xbox-steam-calibrating ] && continue
+                        [ -f /tmp/hss-steam-trigger-calibrating ] && continue
                         if [ "$BIND_MODE" = "combo" ]; then
                             if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
                                 MODIFIER_HELD=1
@@ -289,8 +289,8 @@ if [ "$1" == "listen" ]; then
         echo "$LISTENER_PIDS" > "$PID_FILE"
     }
 
-    PID_FILE="/tmp/xbox-steam-$DEVICE_ID-pids.txt"
-    NODES_FILE="/tmp/xbox-steam-$DEVICE_ID-nodes.txt"
+    PID_FILE="/tmp/hss-steam-trigger-$DEVICE_ID-pids.txt"
+    NODES_FILE="/tmp/hss-steam-trigger-$DEVICE_ID-nodes.txt"
 
     # Kills this device's listeners. The evtest subprocesses run as root (sudo),
     # so the user systemd manager cannot kill them with its cgroup kill — they
@@ -371,7 +371,7 @@ fi
 # --- TRIGGER EXECUTION ---
 if [ "$1" == "trigger" ]; then
     USER_NAME="${USER_NAME:-$(id -un)}"
-    [ -f /tmp/xbox-steam-calibrating ] && exit 0
+    [ -f /tmp/hss-steam-trigger-calibrating ] && exit 0
 
     # Route trigger output to the systemd journal instead of a file in $HOME:
     # the trigger runs as a background child of the listener subshell, whose

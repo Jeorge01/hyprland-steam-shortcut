@@ -289,7 +289,7 @@ bind_status() {
     fi
     name=$(grep "^TARGET_DEV_NAME=" "$conf" 2>/dev/null | cut -d'"' -f2)
 
-    if systemctl --user is-active --quiet "xbox-steam@$id.service" 2>/dev/null; then
+    if systemctl --user is-active --quiet "hss-steam-trigger@$id.service" 2>/dev/null; then
         state_icon="${GREEN}●${CLEAR}"
         state_word="${GREEN}active${CLEAR}  "
     else
@@ -410,16 +410,16 @@ EOFCFG
     log_info "Migrated legacy single-bind config to device '$id'."
 
     if systemctl --user is-enabled xbox-steam.service 2>/dev/null || systemctl --user is-active xbox-steam.service 2>/dev/null; then
-        systemctl --user enable "xbox-steam@$id.service" 2>/dev/null || true
+        systemctl --user enable "hss-steam-trigger@$id.service" 2>/dev/null || true
     fi
     systemctl --user disable --now xbox-steam.service 2>/dev/null || true
     rm -f "$HOME/.config/systemd/user/xbox-steam.service"
 }
 
 toggle_bind() {
-    local id="$1" nf="/tmp/xbox-steam-$id-nodes.txt"
-    if systemctl --user is-active --quiet "xbox-steam@$id.service" 2>/dev/null; then
-        systemctl --user disable --now "xbox-steam@$id.service" 2>/dev/null || true
+    local id="$1" nf="/tmp/hss-steam-trigger-$id-nodes.txt"
+    if systemctl --user is-active --quiet "hss-steam-trigger@$id.service" 2>/dev/null; then
+        systemctl --user disable --now "hss-steam-trigger@$id.service" 2>/dev/null || true
         # evtest runs as root in the user service cgroup, which the user
         # manager cannot kill — terminate the listeners explicitly too.
         if [ -f "$nf" ]; then
@@ -427,7 +427,7 @@ toggle_bind() {
             rm -f "$nf"
         fi
     else
-        systemctl --user enable --now "xbox-steam@$id.service" 2>/dev/null || true
+        systemctl --user enable --now "hss-steam-trigger@$id.service" 2>/dev/null || true
     fi
 }
 
@@ -751,7 +751,7 @@ manage_binds() {
                 echo ""
                 echo ""
                 if confirm_dialog "Remove this bind?" 2; then
-                    systemctl --user disable --now "xbox-steam@$aid.service" 2>/dev/null || true
+                    systemctl --user disable --now "hss-steam-trigger@$aid.service" 2>/dev/null || true
                     rm -f "$DEVICES_DIR/$aid.conf"
                     confs=()
                     while IFS= read -r f; do
@@ -886,8 +886,8 @@ cleanup() {
     printf '\033[?25h' >/dev/tty 2>/dev/null || true
     stty echo </dev/tty 2>/dev/null || true
 
-    if [ -f /tmp/xbox-steam-calibrating ]; then
-        rm -f /tmp/xbox-steam-calibrating
+    if [ -f /tmp/hss-steam-trigger-calibrating ]; then
+        rm -f /tmp/hss-steam-trigger-calibrating
         echo ""
         echo -e "${YELLOW}Calibration aborted. Restoring previous binds...${CLEAR}"
         restore_paused
@@ -1101,11 +1101,11 @@ echo -e "${GRAY_BG}${WHITE_FG}$(printf '%*s' 22 '')Waiting for input...$(printf 
             if [ "$k" = $'\e' ]; then
                 if IFS= read -r -s -n1 -t 0.02 extra </dev/tty 2>/dev/null; then
                     if [ "$extra" != "[" ]; then
-                        touch /tmp/xbox-steam-calib-esc
+                        touch /tmp/hss-steam-trigger-calib-esc
                         exit 0
                     fi
                 else
-                    touch /tmp/xbox-steam-calib-esc
+                    touch /tmp/hss-steam-trigger-calib-esc
                     exit 0
                 fi
             fi
@@ -1122,7 +1122,7 @@ COMBO_BTN_NAME=""
 
 CALIB_ABORTED=0
 while :; do
-    if [ -f /tmp/xbox-steam-calib-esc ]; then
+    if [ -f /tmp/hss-steam-trigger-calib-esc ]; then
         CALIB_ABORTED=1
         break
     fi
@@ -1199,9 +1199,9 @@ stty echo </dev/tty 2>/dev/null || true
 set -e
 
 CALIB_ESC_HELD=0
-[ -f /tmp/xbox-steam-calib-esc ] && CALIB_ESC_HELD=1
+[ -f /tmp/hss-steam-trigger-calib-esc ] && CALIB_ESC_HELD=1
 kill "$CALIB_ESC_PID" 2>/dev/null || true
-rm -f /tmp/xbox-steam-calib-esc
+rm -f /tmp/hss-steam-trigger-calib-esc
 [[ -n "$(jobs -p)" ]] && kill $(jobs -p) 2>/dev/null || true
 rm -f "$CALIB_EVTEST"
 
@@ -1427,7 +1427,7 @@ bind_flow() {
     PAUSED_UNITS=()
     while IFS= read -r u; do
         PAUSED_UNITS+=("$u")
-    done < <(systemctl --user list-units 'xbox-steam@*.service' --state=active --no-legend --no-pager 2>/dev/null | awk '{print $1}')
+    done < <(systemctl --user list-units 'hss-steam-trigger@*.service' --state=active --no-legend --no-pager 2>/dev/null | awk '{print $1}')
     if [ ${#PAUSED_UNITS[@]} -gt 0 ]; then
         echo "  Pausing active binds for calibration..."
         for u in "${PAUSED_UNITS[@]}"; do
@@ -1452,13 +1452,13 @@ bind_flow() {
     printf '\0337' >/dev/tty  # save cursor position (end of header)
 
     while :; do
-        touch /tmp/xbox-steam-calibrating
+        touch /tmp/hss-steam-trigger-calibrating
 
         calib_rc=0
         calibrate || calib_rc=$?
 
         trap - INT TERM
-        rm -f /tmp/xbox-steam-calibrating
+        rm -f /tmp/hss-steam-trigger-calibrating
 
         if [ "$calib_rc" -eq 2 ]; then
             restore_paused
@@ -1522,8 +1522,8 @@ EOFC
     apply_guide_btn_fix "$DEVICE_ID"
 
     log_info "Enabling bind for $DEVICE_ID..."
-    systemctl --user enable "xbox-steam@$DEVICE_ID.service" &>/dev/null || true
-    if ! run_cmd systemctl --user restart "xbox-steam@$DEVICE_ID.service"; then
+    systemctl --user enable "hss-steam-trigger@$DEVICE_ID.service" &>/dev/null || true
+    if ! run_cmd systemctl --user restart "hss-steam-trigger@$DEVICE_ID.service"; then
         log_info "[!] Failed to start service."
     fi
 
@@ -1669,7 +1669,7 @@ options_menu() {
 migrate_legacy
 
 # Gate: bind-manager requires install.sh to have run once (systemd unit present).
-if [ ! -f "$HOME/.config/systemd/user/xbox-steam@.service" ]; then
+if [ ! -f "$HOME/.config/systemd/user/hss-steam-trigger@.service" ]; then
     echo -e "${YELLOW}⚠️  Setup not detected.${CLEAR}"
     echo -e "   Run the installer first:"
     echo -e "     ${HYPR_BLUE}curl -sL https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main/install.sh | bash${CLEAR}"

@@ -42,7 +42,7 @@
 #   - Steam rewrites localconfig.vdf / config.vdf from its in-memory copy when
 #     it exits, so `setup`/`revert` must run while Steam is down (or --force).
 #   - Steam regenerates the SDL mapping (with the guide bound) whenever the
-#     controller is reset in "Setup Device Inputs", so run_steam.sh re-runs
+#     controller is reset in "Setup Device Inputs", so steam-trigger.sh re-runs
 #     `setup --global-off` before every fresh Steam launch. It is idempotent.
 
 set -u

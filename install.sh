@@ -27,7 +27,7 @@ HSS_BIN="$HOME/.local/bin/hss"
 RAW_URL="${HSS_RAW_URL:-https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main}"
 HSS_URL="$RAW_URL/bind-manager.sh"
 UNINSTALL_URL="$RAW_URL/uninstall.sh"
-RUN_URL="$RAW_URL/run_steam.sh"
+TRIGGER_URL="$RAW_URL/steam-trigger.sh"
 GUIDE_BTN_URL="$RAW_URL/steam-guide-btn-fix.sh"
 UINPUTCTL_URL="$RAW_URL/uinputctl.c"
 
@@ -125,13 +125,13 @@ build_plan() {
         PLAN_SYS+=("Remove legacy single-device xbox-steam service")
     fi
 
-    PLAN_SYS+=("systemd template unit — xbox-steam@.service")
+    PLAN_SYS+=("systemd template unit — hss-steam-trigger@.service")
     PLAN_SYS+=("loginctl linger — run listener without login session")
-    PLAN_SYS+=("sudoers rule — passwordless evtest (/etc/sudoers.d/xbox-steam-evtest)")
+    PLAN_SYS+=("sudoers rule — passwordless evtest (/etc/sudoers.d/hss-evtest)")
     PLAN_SYS+=("evtest cleanup helper — /usr/local/sbin/hss-evtest-stop")
     PLAN_SYS+=("Bind Manager — ~/.local/share/hss/bind-manager.sh")
     PLAN_SYS+=("Uninstaller — ~/.local/share/hss/uninstall.sh")
-    PLAN_SYS+=("Steam launcher — ~/.local/share/hss/run_steam.sh")
+    PLAN_SYS+=("Steam trigger — ~/.local/share/hss/steam-trigger.sh")
     PLAN_SYS+=("Steam guide button fix — ~/.local/share/hss/steam-guide-btn-fix.sh")
     PLAN_SYS+=("Menu toggle injector — ~/.local/share/hss/uinputctl.c")
     PLAN_SYS+=("Launcher — ~/.local/bin/hss")
@@ -241,16 +241,21 @@ fi
 install_service_unit() {
     mkdir -p "$HOME/.config/systemd/user"
 
-    log_info "Creating/Updating systemd template unit (xbox-steam@.service)..."
-    cat << EOF > "$HOME/.config/systemd/user/xbox-steam@.service"
+    log_info "Creating/Updating systemd template unit (hss-steam-trigger@.service)..."
+    if [ -f "$HOME/.config/systemd/user/xbox-steam@.service" ]; then
+        log_info "Removing legacy xbox-steam@.service unit..."
+        systemctl --user disable 'xbox-steam@*.service' 2>/dev/null || true
+        rm -f "$HOME/.config/systemd/user/xbox-steam@.service"
+    fi
+    cat << EOF > "$HOME/.config/systemd/user/hss-steam-trigger@.service"
 [Unit]
 Description=Steam Big Picture Trigger (%i)
 After=default.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash $APP_DIR/run_steam.sh listen %i
-ExecStop=/bin/sh -c 'pid_file="/tmp/xbox-steam-%i-pids.txt"; nodes_file="/tmp/xbox-steam-%i-nodes.txt"; if [ -f "\$pid_file" ]; then xargs kill < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi; if [ -f "\$nodes_file" ]; then sudo -n /usr/local/sbin/hss-evtest-stop \$(cat "\$nodes_file") 2>/dev/null || true; rm -f "\$nodes_file"; fi'
+ExecStart=/bin/bash $APP_DIR/steam-trigger.sh listen %i
+ExecStop=/bin/sh -c 'pid_file="/tmp/hss-steam-trigger-%i-pids.txt"; nodes_file="/tmp/hss-steam-trigger-%i-nodes.txt"; if [ -f "\$pid_file" ]; then xargs kill < "\$pid_file" 2>/dev/null; rm -f "\$pid_file"; fi; if [ -f "\$nodes_file" ]; then sudo -n /usr/local/sbin/hss-evtest-stop \$(cat "\$nodes_file") 2>/dev/null || true; rm -f "\$nodes_file"; fi'
 KillMode=control-group
 Restart=always
 RestartSec=5
@@ -258,7 +263,7 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 EOF
-    INSTALLED+=("systemd template unit — ${HYPR_BLUE}xbox-steam@.service${CLEAR}")
+    INSTALLED+=("systemd template unit — ${HYPR_BLUE}hss-steam-trigger@.service${CLEAR}")
 
     log_info "Reloading systemd configuration..."
     if ! run_cmd systemctl --user daemon-reload; then
@@ -291,7 +296,7 @@ remove_legacy_service
 install_service_unit
 
 echo "  Adding sudoers rule for evtest..."
-SU_FILE="/etc/sudoers.d/xbox-steam-evtest"
+SU_FILE="/etc/sudoers.d/hss-evtest"
 {
     echo "$(id -un) ALL=(root) NOPASSWD: /usr/bin/evtest"
     echo "$(id -un) ALL=(root) NOPASSWD: /usr/local/sbin/hss-evtest-stop"
@@ -366,10 +371,10 @@ if ! deploy_file "uninstall.sh" "$APP_DIR/uninstall.sh" "$UNINSTALL_URL"; then
 fi
 INSTALLED+=("Uninstaller — ${HYPR_BLUE}$APP_DIR/uninstall.sh${CLEAR}")
 
-if ! deploy_file "run_steam.sh" "$APP_DIR/run_steam.sh" "$RUN_URL"; then
-    echo -e "${YELLOW}⚠️  Failed to deploy run_steam.sh — binds will not work until it is present.${CLEAR}"
+if ! deploy_file "steam-trigger.sh" "$APP_DIR/steam-trigger.sh" "$TRIGGER_URL"; then
+    echo -e "${YELLOW}⚠️  Failed to deploy steam-trigger.sh — binds will not work until it is present.${CLEAR}"
 else
-    INSTALLED+=("Steam launcher — ${HYPR_BLUE}$APP_DIR/run_steam.sh${CLEAR}")
+    INSTALLED+=("Steam trigger — ${HYPR_BLUE}$APP_DIR/steam-trigger.sh${CLEAR}")
 fi
 
 if ! deploy_file "steam-guide-btn-fix.sh" "$APP_DIR/steam-guide-btn-fix.sh" "$GUIDE_BTN_URL"; then
@@ -384,7 +389,7 @@ else
     INSTALLED+=("Menu toggle injector — ${HYPR_BLUE}$APP_DIR/uinputctl.c${CLEAR}")
 fi
 
-chmod +x "$APP_DIR/bind-manager.sh" "$APP_DIR/uninstall.sh" "$APP_DIR/run_steam.sh" "$APP_DIR/steam-guide-btn-fix.sh"
+chmod +x "$APP_DIR/bind-manager.sh" "$APP_DIR/uninstall.sh" "$APP_DIR/steam-trigger.sh" "$APP_DIR/steam-guide-btn-fix.sh"
 
 # Verify the deployed scripts are real scripts (catches failed/404 downloads)
 for f in bind-manager.sh uninstall.sh; do
