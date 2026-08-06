@@ -76,22 +76,43 @@ One script, two modes:
   are logged under the same `hss-trigger` tag as the trigger, so
   `journalctl --user -t hss-trigger -f` shows the whole lifecycle.
 - `run_steam.sh trigger` — runs on button press. Copies DISPLAY/Wayland
-  environment into the service, focuses the Steam window or current workspace,
+  environment into the service (including `HYPRLAND_INSTANCE_SIGNATURE`, which
+  the systemd service lacks — without it `hyprctl` fails and the focus/workspace
+  detection silently no-ops), focuses the Steam window or current workspace,
   and opens Big Picture Mode. Trigger output is logged to the systemd journal
   with the tag `hss-trigger`; follow it live with `journalctl --user -t hss-trigger -f`.
+- `steam-guide-btn-fix.sh` — one file for the whole guide-button lifecycle,
+  three modes. `setup` patches Steam's config files while Steam is closed
+  (per-game Steam Input off; with `--global-off` also unbinds the guide button
+  from SDL for every controller Steam logged, sets `Controller_CheckGuideButton
+  = 0` and `SteamController_XBoxSupport = 0`).   `setup --device <vid-pid>` unbinds
+  the guide button for **one** controller only (matched against Steam's
+  `controller.txt` by vid/pid) and touches no global keys — this is what
+  bind-manager.sh runs when a bind is saved. `revert` restores every patched
+  `config.vdf`/`localconfig.vdf` from the `.bak` backups `setup` made, so Steam
+  is back to normal — uninstall.sh runs it before removing the app. `toggle`
+  injects Ctrl+1 (the STEAM
+  button) into the focused window via uinput to open/close the Big Picture menu.
+  `run_steam.sh` runs `setup --global-off` before each fresh launch (the safety
+  net that re-applies the fix after Steam resets a controller) and `toggle` on
+  button press when Steam is already running.
 
 ### `uninstall.sh` — the uninstaller
 
 Removes binds or the entire installation (binds, service, sudoers rules, the
-helper, scripts and logs).
+helper, scripts and logs). A full uninstall (`all`) first runs
+`steam-guide-btn-fix.sh revert --force`, which restores Steam's patched
+`config.vdf`/`localconfig.vdf` from their `.bak` backups — so Steam's guide
+button, Xbox Configuration Support and per-game Steam Input are back to normal
+too, not just the hss side.
 
 ## 4. Configuration and state
 
 | Path | Contents |
 |---|---|
 | `~/.config/steam-shortcut/config` | Global config: `USER_NAME`, `USER_ID` |
-| `~/.config/steam-shortcut/devices/<device-id>.conf` | Per-device bind: `TARGET_DEV_NAME`, `DEVICE_UNIQ`, `DEVICE_SERIAL`, `BIND_MODE`, button codes |
-| `~/.local/share/hss/` | Deployed scripts (`bind-manager.sh`, `run_steam.sh`, `uninstall.sh`) |
+| `~/.config/steam-shortcut/devices/<device-id>.conf` | Per-device bind: `TARGET_DEV_NAME`, `DEVICE_UNIQ`, `DEVICE_SERIAL`, `BIND_MODE`, button codes, `GUIDE_BTN_FIX` (`1` = guide button was unbound from Steam for this device when the bind was saved) |
+| `~/.local/share/hss/` | Deployed scripts (`bind-manager.sh`, `run_steam.sh`, `steam-guide-btn-fix.sh`, `uinputctl.c`, `uninstall.sh`) |
 | `~/.local/bin/hss` | Bind Manager launcher command |
 | `~/.config/systemd/user/xbox-steam@.service` | Systemd template unit (instance = `<device-id>`) |
 | `/etc/sudoers.d/xbox-steam-evtest` | NOPASSWD rules for `evtest` and the helper |
@@ -199,10 +220,20 @@ The fix is to always kill the root listeners *explicitly*:
    If a game is found, the trigger focuses its window (workspace + window +
    cursor) and stops — Steam's own guide-button overlay keeps working on top
    of the game, so the bind never yanks focus away from it.
-4. Otherwise the script finds the Steam window's workspace via
+  4. **Steam can never steal focus.** Steam runs as an X11 client under
+     XWayland, and X11 clients can force the input focus through X11 calls that
+     XWayland turns into focus requests the compositor honors. That used to let
+     Steam yank focus away when its overlay could not attach to the game (e.g.
+     EAC blocks the injection, Proton#5794) — the guide button made Steam show
+     the QAM in the Big Picture window and steal focus. This is why the guide
+     button must not reach Steam at all: `steam-guide-btn-fix.sh setup
+     --global-off` unbinds it before every fresh launch, and `setup --device
+     <vid-pid>` unbinds it for a single controller the moment it is bound (see
+     §9), so Steam can never react to it and the game keeps focus.
+ 5. Otherwise the script finds the Steam window's workspace via
    `hyprctl clients`, or uses the current workspace if Steam is not running
    yet.
-5. `hyprctl eval` moves focus via `hl.dsp.focus` / `cursor.move_to_corner`,
+6. `hyprctl eval` moves focus via `hl.dsp.focus` / `cursor.move_to_corner`,
    then Steam is launched with `steam steam://open/bigpicture` (or
    `systemd-run --user steam -bigpicture` if Steam is not running).
 
@@ -222,6 +253,30 @@ The fix is to always kill the root listeners *explicitly*:
   works for buttons the grabber leaves untouched — use different buttons in each
   tool.
 - **Steam does not open** — check `journalctl --user -t hss-trigger -f` for errors.
+- **Steam steals focus from the game after the trigger** — a known Steam-client
+  bug: when the overlay cannot attach to the game (EAC titles etc.), pressing
+  guide shows the QAM in the Big Picture window and yanks focus away
+  (ValveSoftware/steam-for-linux#10217, #3783; Proton#5794). The reliable fix
+  is to make sure the guide button itself never reaches Steam: the GUI toggles
+  ("Guide button focuses Steam", `Controller_CheckGuideButton = 0`) are known
+  duds on their own; the working fix is to unbind the guide button from Steam's
+  SDL gamepad mapping, which is what the "Setup Device Inputs" wizard does when
+   you skip it. `steam-guide-btn-fix.sh setup --global-off` does this for every
+   controller Steam has logged, and `setup --device <vid-pid>` for a single
+   one: it reads the runtime mapping from
+   `<steam>/logs/controller.txt`, drops the `guide:` field, attaches the device
+   crc to the base GUID and injects the resulting `crc:<...>` entry into
+   `SDL_GamepadBind` in `<steam>/config/config.vdf`, plus (for `--global-off`)
+   sets `Controller_CheckGuideButton = 0` and `SteamController_XBoxSupport =
+   0`. Binding a controller through bind-manager.sh runs the per-device variant
+   automatically and records `GUIDE_BTN_FIX=1` in the device config. Every
+   patch is preceded by a `*.bak` copy of the file, and `setup --device
+   <vid-pid>`/`--global-off` are idempotent — even when Steam has already
+   adopted the no-guide mapping (its own log entry then carries `crc:`/`steam:`
+   fields, which the patch strips before re-injecting). hss keeps
+   its own evtest listener either way. **Do not** switch to Proton
+   11/Experimental for these games: they inherit the refocus regression
+   (Proton#9780).
 - **Controller reconnects but the service does not pick it up** — the listener
   re-scans devices automatically; otherwise `systemctl --user restart
   xbox-steam@<device-id>.service`.

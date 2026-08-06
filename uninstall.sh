@@ -168,6 +168,7 @@ echo -e "  - sudoers rule (/etc/sudoers.d/xbox-steam-evtest)"
 echo -e "  - evtest cleanup helper (/usr/local/sbin/hss-evtest-stop)"
 echo -e "  - run_steam.sh ($APP_DIR/run_steam.sh)"
 echo -e "  - config directory ($CONFIG_DIR)"
+echo -e "  - Steam guide-button patches (restored to normal from backup)"
 echo -e "  - the Bind Manager itself ($APP_DIR, $HSS_BIN)"
 echo ""
 
@@ -177,6 +178,16 @@ if ! confirm "Uninstall hss?"; then
 fi
 
 echo -e " ${YELLOW}Removing hyprland-steam-shortcut...${CLEAR}"
+
+# Restore Steam's controller configuration (guide button, Xbox Configuration
+# Support, per-game Steam Input) to its pre-fix state before removing the app.
+# --force closes Steam if it is running. Never abort the uninstall over this.
+if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
+    echo -e " ${YELLOW}Reverting Steam controller patches...${CLEAR}"
+    if ! "$APP_DIR/steam-guide-btn-fix.sh" revert --force; then
+        echo -e " ${YELLOW}Steam patch revert failed — continuing uninstall anyway.${CLEAR}"
+    fi
+fi
 
 remove_all_binds
 

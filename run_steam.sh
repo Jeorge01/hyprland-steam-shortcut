@@ -2,6 +2,7 @@
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/steam-shortcut"
 SCRIPT_PATH="$(realpath "$0")"
+APP_DIR="$(dirname "$SCRIPT_PATH")"
 
 if [ -f "$CONFIG_DIR/config" ]; then
     source "$CONFIG_DIR/config"
@@ -374,15 +375,16 @@ if [ "$1" == "trigger" ]; then
 
     export WAYLAND_DISPLAY=$(systemctl --user show-environment | grep '^WAYLAND_DISPLAY=' | cut -d= -f2)
     export DISPLAY=$(systemctl --user show-environment | grep '^DISPLAY=' | cut -d= -f2)
+    export HYPRLAND_INSTANCE_SIGNATURE=$(systemctl --user show-environment | grep '^HYPRLAND_INSTANCE_SIGNATURE=' | cut -d= -f2)
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
-    if [ -z "$WAYLAND_DISPLAY" ]; then
+    if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
         COMPOSITOR_PID=$(pgrep -u "$USER" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
 
         if [ -n "$COMPOSITOR_PID" ]; then
-            export WAYLAND_DISPLAY=$(grep -z '^WAYLAND_DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-            export DISPLAY=$(grep -z '^DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
-            export HYPRLAND_INSTANCE_SIGNATURE=$(grep -z '^HYPRLAND_INSTANCE_SIGNATURE=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
+            [ -z "$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY=$(grep -z '^WAYLAND_DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
+            [ -z "$DISPLAY" ] && export DISPLAY=$(grep -z '^DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
+            [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ] && export HYPRLAND_INSTANCE_SIGNATURE=$(grep -z '^HYPRLAND_INSTANCE_SIGNATURE=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')
         fi
     fi
 
@@ -431,10 +433,11 @@ if [ "$1" == "trigger" ]; then
 
     if [ -n "$GAME" ]; then
         read -r GAME_CLASS GAME_WS GAME_ADDR GAME_TITLE <<< "$GAME"
+        GAME_ADDR_0X="0x${GAME_ADDR#0x}"
         echo "Game running — focusing $GAME_TITLE on workspace $GAME_WS"
         hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $GAME_WS }))" >/dev/null 2>&1 || true
-        hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'address:$GAME_ADDR' }))" >/dev/null 2>&1 || true
-        hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'address:$GAME_ADDR' }))" >/dev/null 2>&1 || true
+        hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'address:$GAME_ADDR_0X' }))" >/dev/null 2>&1 || true
+        hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'address:$GAME_ADDR_0X' }))" >/dev/null 2>&1 || true
         echo "Trigger complete"
         exit 0
     fi
@@ -473,8 +476,25 @@ if [ "$1" == "trigger" ]; then
     hyprctl eval "hl.dispatch(hl.dsp.cursor.move_to_corner({ corner = 2, window = 'class:[Ss]team' }))" >/dev/null 2>&1 || true
 
     if [ -n "$PID_LIST" ]; then
-        steam steam://open/bigpicture >/dev/null 2>&1 &
+        # Steam is already running: toggle its Big Picture menu (the same menu
+        # the guide button opens on a Deck) instead of just focusing it. Ctrl+1
+        # is injected via uinput by steam-guide-btn-fix.sh toggle — the window
+        # was focused above, so the keystroke lands in Steam without the mouse.
+        if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
+            "$APP_DIR/steam-guide-btn-fix.sh" toggle >/dev/null 2>&1 || \
+                steam steam://open/bigpicture >/dev/null 2>&1 &
+        else
+            steam steam://open/bigpicture >/dev/null 2>&1 &
+        fi
     else
+        # Re-apply the Steam Input guide-unbind before every fresh launch.
+        # Steam regenerates the mapping (with the guide button bound) whenever
+        # the controller is reset/remapped in "Setup Device Inputs", so this
+        # re-injects the no-guide entries while Steam is still closed. It is
+        # idempotent: when the entries are already present it changes nothing.
+        if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
+            "$APP_DIR/steam-guide-btn-fix.sh" setup --global-off >/dev/null 2>&1 || true
+        fi
         systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
     fi
     echo "Trigger complete"

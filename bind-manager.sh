@@ -48,6 +48,26 @@ run_cmd() {
     return 0
 }
 
+# After a bind is saved, unbind the guide button from Steam's SDL mapping for
+# THIS device only (never the global keys). Requires a vid-pid device id and
+# that Steam has logged the controller once; --force closes Steam if running.
+apply_guide_btn_fix() {
+    local id="$1" fix="$APP_DIR/steam-guide-btn-fix.sh"
+    case "$id" in
+        [0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *)
+            log_info "Device '$id' has no vid-pid id — guide button fix skipped."
+            return 0
+            ;;
+    esac
+    if [ ! -x "$fix" ]; then
+        log_info "steam-guide-btn-fix.sh not found — guide button fix skipped."
+        return 0
+    fi
+    log_info "Unbinding the guide button from Steam for '$id'..."
+    "$fix" setup --device "$id" --force 2>&1 | log_info
+}
+
 confirm() {
     if command -v gum &>/dev/null; then
         gum confirm "$1" </dev/tty \
@@ -379,6 +399,7 @@ MODIFIER_BTN_CODE=$(grep '^MODIFIER_BTN_CODE=' "$CONFIG_DIR/config" | cut -d'"' 
 MODIFIER_BTN_NAME=$(grep '^MODIFIER_BTN_NAME=' "$CONFIG_DIR/config" | cut -d'"' -f2)
 TRIGGER_BTN_CODE=$(grep '^TRIGGER_BTN_CODE=' "$CONFIG_DIR/config" | cut -d'"' -f2)
 TRIGGER_BTN_NAME=$(grep '^TRIGGER_BTN_NAME=' "$CONFIG_DIR/config" | cut -d'"' -f2)
+GUIDE_BTN_FIX="1"
 EOFC
 
     cat > "$CONFIG_DIR/config" << EOFCFG
@@ -420,28 +441,30 @@ read_key() {
         echo "TIMEOUT"
         return 0
     fi
+    local result
     if [ "$key" = $'\e' ]; then
         if IFS= read -r -s -n1 -t 0.1 extra </dev/tty; then
             if [ "$extra" = "[" ]; then
                 IFS= read -r -s -n1 -t 0.1 extra2 </dev/tty
                 case "$extra2" in
-                    A) echo "UP" ;;
-                    B) echo "DOWN" ;;
-                    C) echo "RIGHT" ;;
-                    D) echo "LEFT" ;;
-                    *) echo "ESC" ;;
+                    A) result="UP" ;;
+                    B) result="DOWN" ;;
+                    C) result="RIGHT" ;;
+                    D) result="LEFT" ;;
+                    *) result="ESC" ;;
                 esac
             else
-                echo "ESC"
+                result="ESC"
             fi
         else
-            echo "ESC"
+            result="ESC"
         fi
     elif [ -z "$key" ] || [ "$key" = $'\r' ] || [ "$key" = $'\n' ]; then
-        echo "enter"
+        result="enter"
     else
-        echo "$key"
+        result="$key"
     fi
+    echo "$result"
 }
 
 drain_keys() {
@@ -1493,7 +1516,10 @@ MODIFIER_BTN_CODE="$MODIFIER_BTN_CODE"
 MODIFIER_BTN_NAME="$MODIFIER_BTN_NAME"
 TRIGGER_BTN_CODE="$TRIGGER_BTN_CODE"
 TRIGGER_BTN_NAME="$TRIGGER_BTN_NAME"
+GUIDE_BTN_FIX="1"
 EOFC
+
+    apply_guide_btn_fix "$DEVICE_ID"
 
     log_info "Enabling bind for $DEVICE_ID..."
     systemctl --user enable "xbox-steam@$DEVICE_ID.service" &>/dev/null || true

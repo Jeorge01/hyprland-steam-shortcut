@@ -28,6 +28,8 @@ RAW_URL="${HSS_RAW_URL:-https://raw.githubusercontent.com/Jeorge01/hyprland-stea
 HSS_URL="$RAW_URL/bind-manager.sh"
 UNINSTALL_URL="$RAW_URL/uninstall.sh"
 RUN_URL="$RAW_URL/run_steam.sh"
+GUIDE_BTN_URL="$RAW_URL/steam-guide-btn-fix.sh"
+UINPUTCTL_URL="$RAW_URL/uinputctl.c"
 
 declare -a INSTALLED=()
 
@@ -130,6 +132,8 @@ build_plan() {
     PLAN_SYS+=("Bind Manager — ~/.local/share/hss/bind-manager.sh")
     PLAN_SYS+=("Uninstaller — ~/.local/share/hss/uninstall.sh")
     PLAN_SYS+=("Steam launcher — ~/.local/share/hss/run_steam.sh")
+    PLAN_SYS+=("Steam guide button fix — ~/.local/share/hss/steam-guide-btn-fix.sh")
+    PLAN_SYS+=("Menu toggle injector — ~/.local/share/hss/uinputctl.c")
     PLAN_SYS+=("Launcher — ~/.local/bin/hss")
 }
 
@@ -368,7 +372,19 @@ else
     INSTALLED+=("Steam launcher — ${HYPR_BLUE}$APP_DIR/run_steam.sh${CLEAR}")
 fi
 
-chmod +x "$APP_DIR/bind-manager.sh" "$APP_DIR/uninstall.sh" "$APP_DIR/run_steam.sh"
+if ! deploy_file "steam-guide-btn-fix.sh" "$APP_DIR/steam-guide-btn-fix.sh" "$GUIDE_BTN_URL"; then
+    echo -e "${YELLOW}⚠️  Failed to deploy steam-guide-btn-fix.sh — guide button setup/menu toggle disabled.${CLEAR}"
+else
+    INSTALLED+=("Steam guide button fix — ${HYPR_BLUE}$APP_DIR/steam-guide-btn-fix.sh${CLEAR}")
+fi
+
+if ! deploy_file "uinputctl.c" "$APP_DIR/uinputctl.c" "$UINPUTCTL_URL"; then
+    echo -e "${YELLOW}⚠️  Failed to deploy uinputctl.c — menu toggle injection disabled.${CLEAR}"
+else
+    INSTALLED+=("Menu toggle injector — ${HYPR_BLUE}$APP_DIR/uinputctl.c${CLEAR}")
+fi
+
+chmod +x "$APP_DIR/bind-manager.sh" "$APP_DIR/uninstall.sh" "$APP_DIR/run_steam.sh" "$APP_DIR/steam-guide-btn-fix.sh"
 
 # Verify the deployed scripts are real scripts (catches failed/404 downloads)
 for f in bind-manager.sh uninstall.sh; do
