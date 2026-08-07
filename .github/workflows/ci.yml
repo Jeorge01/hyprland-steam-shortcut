@@ -11,13 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     container: debian:stable-slim
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build tools
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            gcc curl xz-utils linux-libc-dev libc6-dev
+            gcc curl xz-utils linux-libc-dev libc6-dev ca-certificates
 
       - name: Syntax check all shell scripts
         run: |
