@@ -530,7 +530,11 @@ if [ "$1" == "trigger" ]; then
         if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
             "$APP_DIR/steam-guide-btn-fix.sh" setup --global-off >/dev/null 2>&1 || true
         fi
-        systemd-run --user --scope --unit=steam-app "${STEAM_CMD[@]}" -bigpicture >/dev/null 2>&1 &
+        # systemd-run scopes are not cleaned up when Steam exits, so a stale
+        # `steam-app` unit from an earlier launch would make this fail silently
+        # and Steam would never start. Use a unique unit name per launch plus
+        # --collect so finished scopes are reaped and nothing can collide.
+        systemd-run --user --scope --collect --unit="steam-app-$(date +%s%N)" "${STEAM_CMD[@]}" -bigpicture >/dev/null 2>&1 &
     fi
     echo "Trigger complete"
 fi

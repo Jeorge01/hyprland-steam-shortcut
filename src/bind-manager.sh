@@ -417,7 +417,8 @@ EOFCFG
 }
 
 toggle_bind() {
-    local id="$1" nf="/tmp/hss-steam-trigger-$id-nodes.txt"
+    local id="$1"
+    local nf="/tmp/hss-steam-trigger-$id-nodes.txt"
     if systemctl --user is-active --quiet "hss-steam-trigger@$id.service" 2>/dev/null; then
         systemctl --user disable --now "hss-steam-trigger@$id.service" 2>/dev/null || true
         # evtest runs as root in the user service cgroup, which the user
@@ -492,7 +493,7 @@ busy_item() {
     status="${line%%  *}"
     rest="${line#*  }"
     if [ "$rest" = "$line" ]; then
-        printf '%s%s%s%s' "${K_DIM}" "$(printf '%s' "$line" | sed "s/${esc}\\[[0-9;]*m//g")" "${CLEAR}"
+        printf '%s%s%s' "${K_DIM}" "$(printf '%s' "$line" | sed "s/${esc}\\[[0-9;]*m//g")" "${CLEAR}"
     else
         rest=$(printf '%s' "$rest" | sed "s/${esc}\\[[0-9;]*m//g")
         printf '%s  %s%s%s' "$status" "${K_DIM}" "$rest" "${CLEAR}"
