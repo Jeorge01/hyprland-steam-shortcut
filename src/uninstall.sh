@@ -27,6 +27,11 @@ DEVICES_DIR="$CONFIG_DIR/devices"
 APP_DIR="$HOME/.local/share/hss"
 HSS_BIN="$HOME/.local/bin/hss"
 
+# Written by install.sh; records which system settings hss introduced so this
+# script only reverts those, never settings the user had before hss.
+STATE_FILE="${HSS_STATE_FILE:-/var/lib/hss/state}"
+XPAD_CONF="${HSS_XPAD_CONF:-/etc/modules-load.d/xpad.conf}"
+
 art_line() {
     local line="$1" out="" prev=0 i=0
     shift
@@ -161,6 +166,16 @@ fi
 
 count_binds
 
+# Read what hss introduced. Pre-existing settings (xpad autoload, linger) are
+# left untouched on uninstall — hss must not undo what the user set up
+# independently. A missing state file means "unknown": keep everything.
+XPAD_STATE=""
+LINGER_STATE=""
+if [ -f "$STATE_FILE" ]; then
+    XPAD_STATE=$(sed -n 's/^xpad_conf=//p' "$STATE_FILE")
+    LINGER_STATE=$(sed -n 's/^linger=//p' "$STATE_FILE")
+fi
+
 echo -e "${YELLOW}This will remove:${CLEAR}"
 echo -e "  - ${WHITE}${BIND_COUNT}${CLEAR} bound device(s) (hss-steam-trigger@<device>.service)"
 echo -e "  - systemd template unit (hss-steam-trigger@.service)"
@@ -170,6 +185,16 @@ echo -e "  - steam-trigger.sh ($APP_DIR/steam-trigger.sh)"
 echo -e "  - config directory ($CONFIG_DIR)"
 echo -e "  - Steam guide-button patches (restored to normal from backup)"
 echo -e "  - the Bind Manager itself ($APP_DIR, $HSS_BIN)"
+if [ "$XPAD_STATE" = "created" ]; then
+    echo -e "  - xpad driver autoload (/etc/modules-load.d/xpad.conf, added by hss)"
+else
+    echo -e "  ${K_DIM}- xpad driver autoload (kept — existed before hss)${CLEAR}"
+fi
+if [ "$LINGER_STATE" = "enabled_by_hss" ]; then
+    echo -e "  - loginctl linger (enabled by hss)"
+else
+    echo -e "  ${K_DIM}- loginctl linger (kept — was enabled before hss)${CLEAR}"
+fi
 echo ""
 
 if ! confirm "Uninstall hss?"; then
@@ -218,6 +243,18 @@ sudo rm -f /etc/systemd/system/xbox-steam.service 2>/dev/null || true
 sudo rm -f /etc/sudoers.d/hss-evtest 2>/dev/null || true
 sudo rm -f /etc/sudoers.d/xbox-steam-evtest 2>/dev/null || true
 sudo rm -f /usr/local/sbin/hss-evtest-stop 2>/dev/null || true
+
+# Restore only the system settings hss introduced. Pre-existing settings are
+# left untouched (see the state read above).
+if [ "$XPAD_STATE" = "created" ]; then
+    echo -e " ${YELLOW}Removing xpad autoload added by hss...${CLEAR}"
+    sudo rm -f "$XPAD_CONF" 2>/dev/null || true
+fi
+if [ "$LINGER_STATE" = "enabled_by_hss" ]; then
+    echo -e " ${YELLOW}Disabling loginctl linger enabled by hss...${CLEAR}"
+    loginctl disable-linger "$(id -un)" 2>/dev/null || true
+fi
+sudo rm -rf "$(dirname "$STATE_FILE")" 2>/dev/null || true
 
 if [ "$BIND_COUNT" -eq 0 ]; then
     echo -e " ${GREEN}No binds found to remove. Uninstalled everything else successfully.${CLEAR}"

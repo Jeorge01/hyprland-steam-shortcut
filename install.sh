@@ -24,6 +24,15 @@ DEVICES_DIR="$CONFIG_DIR/devices"
 APP_DIR="$HOME/.local/share/hss"
 HSS_BIN="$HOME/.local/bin/hss"
 
+# Records which system settings hss introduced (as opposed to settings the
+# user already had), so uninstall can restore the prior state. Only values
+# marked "created"/"enabled_by_hss" are cleaned up; pre-existing settings
+# (xpad autoload, linger) are left alone. Overridable for testing.
+STATE_FILE="${HSS_STATE_FILE:-/var/lib/hss/state}"
+STATE_DIR="$(dirname "$STATE_FILE")"
+# The xpad autoload file, overridable for hermetic tests.
+XPAD_CONF="${HSS_XPAD_CONF:-/etc/modules-load.d/xpad.conf}"
+
 RAW_URL="${HSS_RAW_URL:-https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main}"
 HSS_URL="$RAW_URL/src/bind-manager.sh"
 UNINSTALL_URL="$RAW_URL/src/uninstall.sh"
@@ -132,7 +141,7 @@ build_plan() {
         PLAN_PKGS+=("evtest — controller input capture")
     fi
 
-    if [ -f "/etc/modules-load.d/xpad.conf" ]; then
+    if [ -f "$XPAD_CONF" ]; then
         PLAN_SKIP+=("xpad driver — auto-load on boot (already configured)")
     else
         PLAN_SYS+=("xpad driver — auto-load on boot")
@@ -284,16 +293,24 @@ else
 fi
 
 echo "  Configuring xpad driver..."
-if [ -f "/etc/modules-load.d/xpad.conf" ]; then
+if [ -f "$XPAD_CONF" ]; then
     echo "  xpad is already configured for auto-load, skipping..."
+    # Distinguish "hss created it in a previous install" from "the user had
+    # it before hss" so uninstall only removes what hss actually added.
+    if grep -q '^xpad_conf=created$' "$STATE_FILE" 2>/dev/null; then
+        XPAD_STATE="created"
+    else
+        XPAD_STATE="preexisted"
+    fi
 else
     if ! lsmod | grep -q "xpad"; then
         echo "Loading xpad into the kernel..."
         sudo modprobe xpad || log_info "[!] Failed to load xpad module"
     fi
     echo "Setting xpad to load automatically on boot..."
-    echo "xpad" | sudo tee /etc/modules-load.d/xpad.conf > /dev/null
+    echo "xpad" | sudo tee "$XPAD_CONF" > /dev/null
     INSTALLED+=("xpad driver — auto-load on boot")
+    XPAD_STATE="created"
 fi
 
 # -------------------------------------------------------------------------
@@ -333,9 +350,21 @@ EOF
     fi
 
     log_info "Ensuring background execution via lingering..."
+    # Record whether linger was already enabled before we touch it, so
+    # uninstall can restore the prior state. A previous hss install that
+    # enabled it takes precedence over the current on/off state, so the
+    # fact survives reinstalls.
+    if grep -q '^linger=enabled_by_hss$' "$STATE_FILE" 2>/dev/null; then
+        LINGER_STATE="enabled_by_hss"
+    elif loginctl show-user "$USER_NAME" -p Linger --value 2>/dev/null | grep -q yes; then
+        LINGER_STATE="was_enabled"
+    fi
     if run_cmd loginctl enable-linger "$USER_NAME"; then
         log_info "Lingering enabled for $USER_NAME."
         INSTALLED+=("loginctl linger — listener runs without login session")
+        if [ -z "$LINGER_STATE" ]; then
+            LINGER_STATE="enabled_by_hss"
+        fi
     fi
 }
 
@@ -467,6 +496,18 @@ if [ -e "$HSS_BIN" ] && [ ! -L "$HSS_BIN" ]; then
 fi
 ln -sf "$APP_DIR/bind-manager.sh" "$HSS_BIN"
 INSTALLED+=("Launcher — ${HYPR_BLUE}$HSS_BIN${CLEAR}")
+
+# Record what hss changed for the system so uninstall can restore the prior
+# state instead of removing settings the user had before hss (xpad autoload,
+# linger). Non-fatal: at worst a later uninstall leaves the settings behind.
+STATE_CONTENT=""
+[ -n "${XPAD_STATE:-}" ] && STATE_CONTENT+="xpad_conf=$XPAD_STATE"$'\n'
+[ -n "${LINGER_STATE:-}" ] && STATE_CONTENT+="linger=$LINGER_STATE"$'\n'
+if [ -n "$STATE_CONTENT" ]; then
+    sudo mkdir -p "$STATE_DIR" 2>/dev/null || true
+    printf '%s' "$STATE_CONTENT" | sudo tee "$STATE_FILE" > /dev/null || \
+        log_info "[!] Could not write $STATE_FILE — uninstall may leave system settings behind."
+fi
 
 # -------------------------------------------------------------------------
 # STEP 5: NOTES
