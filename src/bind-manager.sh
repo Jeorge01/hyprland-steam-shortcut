@@ -944,9 +944,11 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
     exit 1
 fi
 
-if ! command -v steam &> /dev/null; then
+if ! command -v steam &> /dev/null && \
+   ! { command -v flatpak &> /dev/null && flatpak info com.valvesoftware.Steam &> /dev/null; }; then
     echo -e "${RED}❌ ERROR: Steam is missing from your system.${CLEAR}"
-    echo -e "${RED}   Please install Steam first before running this installation script.${CLEAR}"
+    echo -e "${RED}   Install Steam first — native package or Flatpak:${CLEAR}"
+    echo -e "${RED}   flatpak install flathub com.valvesoftware.Steam${CLEAR}"
     exit 1
 fi
 

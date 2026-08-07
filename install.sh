@@ -50,6 +50,20 @@ run_cmd() {
     return 0
 }
 
+# Resolves the command used to control Steam: the native binary, or the
+# Flatpak app (flatpak run com.valvesoftware.Steam). Empty when neither is
+# installed. STEAM_CMD is an array so flatpak's multi-word prefix stays one
+# unit.
+detect_steam() {
+    if command -v steam &> /dev/null; then
+        STEAM_CMD=(steam)
+    elif command -v flatpak &> /dev/null && flatpak info com.valvesoftware.Steam &> /dev/null; then
+        STEAM_CMD=(flatpak run com.valvesoftware.Steam)
+    else
+        STEAM_CMD=()
+    fi
+}
+
 # -------------------------------------------------------------------------
 # STEP 1: PRE-FLIGHT CHECKS & DISTRO DETECTION (FAIL-FAST)
 # -------------------------------------------------------------------------
@@ -89,9 +103,11 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
     exit 1
 fi
 
-if ! command -v steam &> /dev/null; then
+detect_steam
+if [ ${#STEAM_CMD[@]} -eq 0 ]; then
     echo -e "${RED}❌ ERROR: Steam is missing from your system.${CLEAR}"
-    echo -e "${RED}   Please install Steam first before running this installation script.${CLEAR}"
+    echo -e "${RED}   Install Steam first — native package or Flatpak:${CLEAR}"
+    echo -e "${RED}   flatpak install flathub com.valvesoftware.Steam${CLEAR}"
     exit 1
 fi
 
@@ -211,7 +227,7 @@ ensure_steam_closed() {
     case "$answer" in
         ""|y|Y)
             echo -e "  ${GREEN}Closing Steam...${CLEAR}"
-            steam -shutdown >/dev/null 2>&1 || true
+            "${STEAM_CMD[@]}" -shutdown >/dev/null 2>&1 || true
             for _ in $(seq 1 30); do
                 pgrep -x steam >/dev/null 2>&1 || break
                 sleep 1

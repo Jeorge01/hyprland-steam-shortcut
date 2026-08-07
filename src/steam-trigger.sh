@@ -383,6 +383,21 @@ if [ "$1" == "trigger" ]; then
     USER_NAME="${USER_NAME:-$(id -un)}"
     [ -f /tmp/hss-steam-trigger-calibrating ] && exit 0
 
+    # Resolves the command used to control Steam: the native binary, or the
+    # Flatpak app (flatpak run com.valvesoftware.Steam). Empty when neither is
+    # installed. STEAM_CMD is an array so flatpak's multi-word prefix stays one
+    # unit.
+    detect_steam() {
+        if command -v steam >/dev/null 2>&1; then
+            STEAM_CMD=(steam)
+        elif command -v flatpak >/dev/null 2>&1 && flatpak info com.valvesoftware.Steam >/dev/null 2>&1; then
+            STEAM_CMD=(flatpak run com.valvesoftware.Steam)
+        else
+            STEAM_CMD=()
+        fi
+    }
+    detect_steam
+
     # Route trigger output to the systemd journal instead of a file in $HOME:
     # the trigger runs as a background child of the listener subshell, whose
     # stdout is a pipe read-end, so it must be redirected explicitly. Follow
@@ -502,9 +517,9 @@ if [ "$1" == "trigger" ]; then
         # was focused above, so the keystroke lands in Steam without the mouse.
         if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
             "$APP_DIR/steam-guide-btn-fix.sh" toggle >/dev/null 2>&1 || \
-                steam steam://open/bigpicture >/dev/null 2>&1 &
+                "${STEAM_CMD[@]}" steam://open/bigpicture >/dev/null 2>&1 &
         else
-            steam steam://open/bigpicture >/dev/null 2>&1 &
+            "${STEAM_CMD[@]}" steam://open/bigpicture >/dev/null 2>&1 &
         fi
     else
         # Re-apply the Steam Input guide-unbind before every fresh launch.
@@ -515,7 +530,7 @@ if [ "$1" == "trigger" ]; then
         if [ -x "$APP_DIR/steam-guide-btn-fix.sh" ]; then
             "$APP_DIR/steam-guide-btn-fix.sh" setup --global-off >/dev/null 2>&1 || true
         fi
-        systemd-run --user --scope --unit=steam-app steam -bigpicture >/dev/null 2>&1 &
+        systemd-run --user --scope --unit=steam-app "${STEAM_CMD[@]}" -bigpicture >/dev/null 2>&1 &
     fi
     echo "Trigger complete"
 fi

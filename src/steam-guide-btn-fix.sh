@@ -47,6 +47,21 @@
 
 set -u
 
+# Resolves the command used to control Steam: the native binary, or the
+# Flatpak app (flatpak run com.valvesoftware.Steam). Empty when neither is
+# installed. STEAM_CMD is an array so flatpak's multi-word prefix stays one
+# unit.
+detect_steam() {
+    if command -v steam >/dev/null 2>&1; then
+        STEAM_CMD=(steam)
+    elif command -v flatpak >/dev/null 2>&1 && flatpak info com.valvesoftware.Steam >/dev/null 2>&1; then
+        STEAM_CMD=(flatpak run com.valvesoftware.Steam)
+    else
+        STEAM_CMD=()
+    fi
+}
+detect_steam
+
 MODE="${1:-}"
 shift 2>/dev/null || true
 
@@ -112,7 +127,7 @@ if [ "${MODE_REVERT:-0}" -eq 1 ]; then
     if pgrep -x steam >/dev/null 2>&1; then
         if [ "$FORCE" -eq 1 ]; then
             echo "Steam is running — closing it..."
-            steam -shutdown >/dev/null 2>&1 || true
+            "${STEAM_CMD[@]}" -shutdown >/dev/null 2>&1 || true
             for _ in $(seq 1 30); do
                 pgrep -x steam >/dev/null 2>&1 || break
                 sleep 1
@@ -215,7 +230,7 @@ fi
 if pgrep -x steam >/dev/null 2>&1; then
     if [ "$FORCE" -eq 1 ]; then
         echo "Steam is running — closing it..."
-        steam -shutdown >/dev/null 2>&1 || true
+        "${STEAM_CMD[@]}" -shutdown >/dev/null 2>&1 || true
         for _ in $(seq 1 30); do
             pgrep -x steam >/dev/null 2>&1 || break
             sleep 1
