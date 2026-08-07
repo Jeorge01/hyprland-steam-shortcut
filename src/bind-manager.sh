@@ -831,25 +831,26 @@ show_banner() {
 
 # Interactive runs switch to the alternate screen buffer — the terminal's
 # previous content is hidden while the program runs and restored on exit.
-# --version/--status keep their output intact.
-if [ "${1:-}" != "--version" ] && [ "${1:-}" != "--status" ]; then
-    alt_screen_on
-fi
+# --version/--status (also -v/-s/-version/-status) keep their output intact.
+case "${1:-}" in
+    --version|-v|-version|--status|-s|-status) : ;;
+    *) alt_screen_on ;;
+esac
 
 show_banner
 
-# Handle --version flag
-if [ "${1:-}" = "--version" ]; then
-    echo "Latest update: ${VERSION}"
-    exit 0
-fi
-
-# Handle --status flag
-if [ "${1:-}" = "--status" ]; then
+# --status / -s / -status: report version, installation state, and binds.
+print_status() {
     echo -e "    Version:    ${WHITE}${VERSION}${CLEAR}"
 
+    if [ -x "$APP_DIR/uninstall.sh" ]; then
+        echo -e "    Installed:  ${GREEN}yes${CLEAR}"
+    else
+        echo -e "    Installed:  ${YELLOW}no${CLEAR}"
+    fi
+
+    found=0
     if [ -d "$DEVICES_DIR" ]; then
-        found=0
         for conf in "$DEVICES_DIR"/*.conf; do
             [ -e "$conf" ] || continue
             found=1
@@ -865,19 +866,27 @@ if [ "${1:-}" = "--status" ]; then
                 fi
             done <<< "$row"
         done
-        if [ "$found" -eq 0 ]; then
-            echo -e "    ${YELLOW}No binds found.${CLEAR}"
-        fi
-    else
-        echo -e "    ${YELLOW}No installation found.${CLEAR}"
+    fi
+    if [ "$found" -eq 0 ]; then
+        echo -e "    ${YELLOW}No binds found.${CLEAR}"
     fi
 
     if [ -f "$CONFIG_DIR/config" ] && grep -q '^TARGET_DEV_NAME=' "$CONFIG_DIR/config"; then
         echo -e "    ${YELLOW}Legacy config detected — run the installer to migrate.${CLEAR}"
     fi
+}
 
-    exit 0
-fi
+# Handle --version / -v / -version
+case "${1:-}" in
+    --version|-v|-version)
+        echo "Latest update: ${VERSION}"
+        exit 0
+        ;;
+    --status|-s|-status)
+        print_status
+        exit 0
+        ;;
+esac
 
 sudo -v </dev/tty || exit 1
 while true; do sudo -n true; sleep 10; kill -0 "$$" || exit; done 2>/dev/null &
