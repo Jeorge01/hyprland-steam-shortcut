@@ -135,7 +135,7 @@ if [ "$1" == "listen" ]; then
     # probe holds the grab only until the timeout releases it.
     node_is_grabbed() {
         local node="$1" out rc
-        out=$(timeout 2 sudo evtest --grab "$node" 2>&1)
+        out=$(timeout 2 sudo -n evtest --grab "$node" 2>&1)
         rc=$?
         echo "$out" | grep -qi "grabbed by another process" && return 0
         [ "$rc" -eq 2 ] && return 0
@@ -262,7 +262,7 @@ if [ "$1" == "listen" ]; then
                 echo "$NUM" >> "$NODES_FILE"
                 (
                     LAST_TRIGGER_AT=0
-                    sudo evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
+                    sudo -n evtest /dev/input/$NUM 2>/dev/null | while read -r line; do
                         [ -f /tmp/hss-steam-trigger-calibrating ] && continue
                         if [ "$BIND_MODE" = "combo" ]; then
                             if echo "$line" | grep -q "code $MODIFIER_BTN_CODE.*value 1"; then
@@ -414,7 +414,7 @@ if [ "$1" == "trigger" ]; then
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
     if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
-        COMPOSITOR_PID=$(pgrep -u "$USER" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
+        COMPOSITOR_PID=$(pgrep -u "$USER_NAME" -x "Hyprland|sway|wayfire|gnome-shell|kwin_wayland" | head -n 1)
 
         if [ -n "$COMPOSITOR_PID" ]; then
             [ -z "$WAYLAND_DISPLAY" ] && export WAYLAND_DISPLAY=$(grep -z '^WAYLAND_DISPLAY=' /proc/$COMPOSITOR_PID/environ | cut -d= -f2- | tr -d '\0')

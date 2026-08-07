@@ -447,6 +447,20 @@ for f in bind-manager.sh uninstall.sh; do
     fi
 done
 
+# Optional components degrade gracefully when missing, but a corrupt file is
+# worse than none — a 404 page from raw.githubusercontent would be chmod +x'd
+# and executed as a "script". Abort on corrupt, keep going on absent.
+for f in steam-trigger.sh steam-guide-btn-fix.sh; do
+    if [ -f "$APP_DIR/$f" ] && ! head -c 2 "$APP_DIR/$f" | grep -q '#!'; then
+        echo -e "${RED}❌ $f was deployed but is corrupt (not a shell script) — aborting.${CLEAR}"
+        exit 1
+    fi
+done
+if [ -f "$APP_DIR/uinputctl.c" ] && ! grep -q '^#include' "$APP_DIR/uinputctl.c"; then
+    echo -e "${RED}❌ uinputctl.c was deployed but is corrupt (not a C source) — aborting.${CLEAR}"
+    exit 1
+fi
+
 # hss launcher symlink
 if [ -e "$HSS_BIN" ] && [ ! -L "$HSS_BIN" ]; then
     rm -f "$HSS_BIN"
