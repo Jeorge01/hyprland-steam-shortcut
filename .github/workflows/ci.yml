@@ -1,0 +1,48 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: bash -n + shellcheck + gcc
+    runs-on: ubuntu-latest
+    container: debian:stable-slim
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            gcc curl xz-utils linux-libc-dev libc6-dev
+
+      - name: Syntax check all shell scripts
+        run: |
+          set -e
+          for f in install.sh src/*.sh; do
+            bash -n "$f"
+          done
+
+      - name: C syntax check (uinputctl)
+        run: gcc -fsyntax-only src/uinputctl.c
+
+      - name: ShellCheck
+        run: |
+          set -e
+          curl -sL -o /tmp/shellcheck.tar.xz \
+            https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+          tar -xf /tmp/shellcheck.tar.xz -C /tmp
+          # Intentional exceptions matching the repo's coding style:
+          #   SC2034 unused vars — color constants and the
+          #     HSS_EVTEST_STOP_VERSION contract (read by other scripts)
+          #   SC2046 unquoted $(cat ...) — space-separated event-node lists
+          #   SC2155 declare-and-assign style
+          #   SC2183 cosmetic multi-color banner printf arg counts
+          #   SC1090 sourced device/global config files absent in CI
+          /tmp/shellcheck-v0.10.0/shellcheck \
+            --shell=bash --severity=warning \
+            --exclude=SC2034,SC2046,SC2155,SC2183,SC1090 \
+            install.sh src/*.sh
