@@ -307,6 +307,48 @@ bind_status() {
     printf '%s %-8s  %s \u2022 %s \u2022 %s\n%12s%s %s' "$state_icon" "$state_word" "${WHITE}${name}${CLEAR}" "$id" "$connected" "" "$mode" "$btn"
 }
 
+# Same data as bind_status, but laid out for the --status CLI: one fact per
+# line, indented to the value column (16 spaces) so it lines up under the
+# "Version:"/"Installed:" values. "connected" sits to the right of the
+# active/inactive state.
+bind_cli_status() {
+    local id="$1" conf="$2" pad
+    local mode btn name state_word connected mod trg modc trgc btnc uniq
+    pad=$(printf '%*s' 16 '')
+    mode=$(grep "^BIND_MODE=" "$conf" 2>/dev/null | cut -d'"' -f2)
+    if [ "$mode" = "combo" ]; then
+        mod=$(grep "^MODIFIER_BTN_NAME=" "$conf" 2>/dev/null | cut -d'"' -f2)
+        trg=$(grep "^TRIGGER_BTN_NAME=" "$conf" 2>/dev/null | cut -d'"' -f2)
+        modc=$(grep "^MODIFIER_BTN_CODE=" "$conf" 2>/dev/null | cut -d'"' -f2)
+        trgc=$(grep "^TRIGGER_BTN_CODE=" "$conf" 2>/dev/null | cut -d'"' -f2)
+        btn="$mod ($modc) + $trg ($trgc)"
+    else
+        btn=$(grep "^TARGET_BTN_NAME=" "$conf" 2>/dev/null | cut -d'"' -f2)
+        btnc=$(grep "^TARGET_BTN_CODE=" "$conf" 2>/dev/null | cut -d'"' -f2)
+        btn="$btn ($btnc)"
+    fi
+    name=$(grep "^TARGET_DEV_NAME=" "$conf" 2>/dev/null | cut -d'"' -f2)
+
+    if systemctl --user is-active --quiet "hss-steam-trigger@$id.service" 2>/dev/null; then
+        state_icon="${GREEN}●${CLEAR}"
+        state_word="${GREEN}active${CLEAR}"
+    else
+        state_icon="${RED}●${CLEAR}"
+        state_word="${RED}inactive${CLEAR}"
+    fi
+
+    uniq=$(grep "^DEVICE_UNIQ=" "$conf" 2>/dev/null | cut -d'"' -f2)
+    if [ -n "$name" ] && device_events "$id" "$name" "$uniq" | grep -q .; then
+        connected="${GREEN}connected${CLEAR}"
+    else
+        connected="${YELLOW}disconnected${CLEAR}"
+    fi
+
+    printf '%s%s %s \u2022 %s\n' "$pad" "$state_icon" "$state_word" "$connected"
+    printf '%s%s \u2022 %s\n' "$pad" "${WHITE}${name}${CLEAR}" "$id"
+    printf '%s%s %s\n' "$pad" "$mode" "$btn"
+}
+
 bind_summary() {
     local id="$1" conf="$2" indent="${3:-0}"
     local mode btn name mod trg modc trgc btnc pad=""
@@ -853,22 +895,16 @@ print_status() {
     if [ -d "$DEVICES_DIR" ]; then
         for conf in "$DEVICES_DIR"/*.conf; do
             [ -e "$conf" ] || continue
-            found=1
             id=$(basename "$conf" .conf)
-            row=$(bind_status "$id" "$conf")
-            first=1
-            while IFS= read -r line; do
-                if [ "$first" -eq 1 ]; then
-                    echo -e "    ${WHITE}•${CLEAR} $line"
-                    first=0
-                else
-                    echo -e "      $line"
-                fi
-            done <<< "$row"
+            if [ "$found" -eq 0 ]; then
+                echo -e "    Binds:"
+                found=1
+            fi
+            echo -e "$(bind_cli_status "$id" "$conf")"
         done
     fi
     if [ "$found" -eq 0 ]; then
-        echo -e "    ${YELLOW}No binds found.${CLEAR}"
+        echo -e "    Binds:      ${YELLOW}No binds found.${CLEAR}"
     fi
 
     if [ -f "$CONFIG_DIR/config" ] && grep -q '^TARGET_DEV_NAME=' "$CONFIG_DIR/config"; then
