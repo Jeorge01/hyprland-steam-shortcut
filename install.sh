@@ -25,11 +25,14 @@ APP_DIR="$HOME/.local/share/hss"
 HSS_BIN="$HOME/.local/bin/hss"
 
 RAW_URL="${HSS_RAW_URL:-https://raw.githubusercontent.com/Jeorge01/hyprland-steam-shortcut/main}"
-HSS_URL="$RAW_URL/bind-manager.sh"
-UNINSTALL_URL="$RAW_URL/uninstall.sh"
-TRIGGER_URL="$RAW_URL/steam-trigger.sh"
-GUIDE_BTN_URL="$RAW_URL/steam-guide-btn-fix.sh"
-UINPUTCTL_URL="$RAW_URL/uinputctl.c"
+HSS_URL="$RAW_URL/src/bind-manager.sh"
+UNINSTALL_URL="$RAW_URL/src/uninstall.sh"
+TRIGGER_URL="$RAW_URL/src/steam-trigger.sh"
+GUIDE_BTN_URL="$RAW_URL/src/steam-guide-btn-fix.sh"
+UINPUTCTL_URL="$RAW_URL/src/uinputctl.c"
+EVTEST_STOP_URL="$RAW_URL/src/hss-evtest-stop.sh"
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 
 declare -a INSTALLED=()
 
@@ -348,33 +351,21 @@ sudo chmod 440 "$SU_FILE"
 INSTALLED+=("sudoers rule — passwordless evtest (${HYPR_BLUE}$SU_FILE${CLEAR})")
 
 echo "  Installing evtest cleanup helper..."
-sudo tee /usr/local/sbin/hss-evtest-stop > /dev/null << 'EOF'
-#!/bin/bash
-# hss-evtest-stop — kill evtest listeners attached to the given input event
-# nodes, or (with --holders) list the processes holding them open. Runs as
-# root via sudo (NOPASSWD). The bind listener runs evtest as root inside a
-# user systemd service, whose cgroup the user manager cannot kill, so stopping
-# a bind needs this explicit, scoped kill.
-if [ "$1" = "--holders" ]; then
-    shift
-    for node in "$@"; do
-        case "$node" in
-            event[0-9]*) ;;
-            *) continue ;;
-        esac
-        fuser -v "/dev/input/$node"
-    done
-    exit 0
+if [ -f "$SCRIPT_DIR/src/hss-evtest-stop.sh" ]; then
+    log_info "Copying hss-evtest-stop.sh from local repo..."
+    if ! grep -q '^HSS_EVTEST_STOP_VERSION=' "$SCRIPT_DIR/src/hss-evtest-stop.sh" 2>/dev/null; then
+        echo -e "${RED}❌ Repo copy of hss-evtest-stop is corrupt (missing version constant) — aborting.${CLEAR}"
+        exit 1
+    fi
+    sudo tee /usr/local/sbin/hss-evtest-stop > /dev/null < "$SCRIPT_DIR/src/hss-evtest-stop.sh"
+else
+    log_info "Downloading hss-evtest-stop.sh..."
+    if ! curl -sL "$EVTEST_STOP_URL" | sudo tee /usr/local/sbin/hss-evtest-stop > /dev/null ||
+       ! grep -q '^HSS_EVTEST_STOP_VERSION=' /usr/local/sbin/hss-evtest-stop 2>/dev/null; then
+        echo -e "${RED}❌ hss-evtest-stop was deployed incorrectly (missing version constant) — aborting.${CLEAR}"
+        exit 1
+    fi
 fi
-for node in "$@"; do
-    case "$node" in
-        event[0-9]*) ;;
-        *) continue ;;
-    esac
-    pkill -f "evtest /dev/input/$node" 2>/dev/null
-done
-exit 0
-EOF
 sudo chmod 755 /usr/local/sbin/hss-evtest-stop
 INSTALLED+=("evtest cleanup helper — ${HYPR_BLUE}/usr/local/sbin/hss-evtest-stop${CLEAR}")
 
@@ -382,13 +373,11 @@ INSTALLED+=("evtest cleanup helper — ${HYPR_BLUE}/usr/local/sbin/hss-evtest-st
 # STEP 4: DEPLOY FILES
 # -------------------------------------------------------------------------
 
-SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-
 deploy_file() {
     local name="$1" dest="$2" url="$3"
-    if [ -f "$SCRIPT_DIR/$name" ]; then
+    if [ -f "$SCRIPT_DIR/src/$name" ]; then
         log_info "Copying $name from local repo..."
-        cp "$SCRIPT_DIR/$name" "$dest"
+        cp "$SCRIPT_DIR/src/$name" "$dest"
         return 0
     fi
     if command -v curl &>/dev/null; then

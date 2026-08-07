@@ -176,17 +176,27 @@ if [ "$1" == "listen" ]; then
         printf '%s\n' "$*"
     }
 
+    # Returns 0 when the installed root helper advertises --holders support
+    # (HSS_EVTEST_STOP_VERSION >= 1). Legacy helpers from one generation have
+    # the flag but no constant, and are probed by the literal string. Never
+    # call the helper with --holders unless this passes — an ancient helper
+    # without --holders support would misread it as a node and pkill the
+    # listener's own evtest.
+    hss_evtest_stop_supports_holders() {
+        [ -f /usr/local/sbin/hss-evtest-stop ] || return 1
+        awk -F= '/^HSS_EVTEST_STOP_VERSION=/{v=$2} END { exit !(v >= 1) }' \
+            /usr/local/sbin/hss-evtest-stop 2>/dev/null || \
+            grep -q -- '--holders' /usr/local/sbin/hss-evtest-stop 2>/dev/null
+    }
+
     # Returns a formatted suffix naming who holds the given nodes, or empty.
     # Primary source is the root helper's --holders mode (fuser), which shows
-    # the real grabbing process even when it runs as root. The helper is only
-    # called when it is known to support --holders (an older helper would
-    # misread it as a node and pkill the listener's own evtest). If the helper
-    # is missing or too old, falls back to a clearly-labelled guess from
-    # running grabber processes.
+    # the real grabbing process even when it runs as root. If the helper is
+    # missing or too old, falls back to a clearly-labelled guess from running
+    # grabber processes.
     grab_holders() {
         local nodes="$1" out suffix="" guesses=""
-        if [ -f /usr/local/sbin/hss-evtest-stop ] &&
-           grep -q -- '--holders' /usr/local/sbin/hss-evtest-stop 2>/dev/null; then
+        if hss_evtest_stop_supports_holders; then
             out=$(sudo -n /usr/local/sbin/hss-evtest-stop --holders $nodes 2>&1)
             if [ -n "$out" ] && ! printf '%s\n' "$out" | grep -qi "command not found\|not authorized\|password is required\|usage"; then
                 suffix=$(printf '%s\n' "$out" | awk '

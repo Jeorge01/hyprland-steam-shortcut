@@ -1,4 +1,13 @@
+# Logs
 *.log
+
+# Editor / OS
 .DS_Store
-CHANGELOG.md
+.idea/
+.vscode/
+
+# Personal dev tools (not shipped with the installer)
+tests/
+code-review-install-sh.md
 STATUS.md
+CHANGELOG.md
